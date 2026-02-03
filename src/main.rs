@@ -1,4 +1,4 @@
-use ratatui::crossterm::event::{EnableMouseCapture, Event};
+use ratatui::crossterm::event::{EnableMouseCapture, Event, KeyModifiers};
 use ratatui::crossterm::event::{self, KeyCode, KeyEventKind};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{enable_raw_mode, EnterAlternateScreen};
@@ -61,9 +61,28 @@ where
                     KeyCode::Char('q') => {
                         return Ok(());
                     }
+                    KeyCode::Char('a') => {
+                        app.buf_manager.add_buffer("untitled");
+                        app.current_screen = Screen::Editor;
+                    }
                     _ => {}
                 },
-                _ => {
+                Screen::Editor => match (key.modifiers, key.code) {
+                    (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
+                        return Ok(());
+                    }
+                    (_, KeyCode::Left) => app.mv_cursor_left(),
+                    (_, KeyCode::Right) => app.mv_cursor_right(),
+                    (_, KeyCode::Up) => app.mv_cursor_up(),
+                    (_, KeyCode::Down) => app.mv_cursor_down(),
+                    (KeyModifiers::NONE, KeyCode::Char(ch)) => {
+                        if let Ok(_) = app.insert_char(ch) {
+                            app.mv_cursor_right();
+                        }
+                    }
+                    _ => {}
+                },
+                Screen::Popup => {
                     if key.code == KeyCode::Esc {
                         app.current_screen = Screen::Welcome;
                     }

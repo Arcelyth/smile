@@ -1,15 +1,18 @@
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use crate::error::*;
 
+
 pub struct Buffer {
-    content: Vec<String>,
-    name: Arc<str>,
+    pub content: Vec<String>,
+    pub name: Arc<str>,
 }
 
 impl Buffer {
     pub fn new(name: &str) -> Self {
         Self {
-            content: vec![],
+            content: vec![String::new()],
             name: Arc::from(name), 
         }
     }
@@ -98,6 +101,16 @@ impl BufferManager {
                 return None;
             }
             return Some(&self.buffers[cur]);
+        }
+        None
+    }
+    
+    pub fn get_current_buffer_mut(&mut self) -> Option<&mut Buffer> {
+        if let Some(cur) = self.current_buffer {
+            if cur >= self.buffers.len() {
+                return None;
+            }
+            return Some(&mut self.buffers[cur]);
         }
         None
     }
