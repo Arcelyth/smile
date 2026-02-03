@@ -80,6 +80,12 @@ where
                             app.mv_cursor_right();
                         }
                     }
+                    (KeyModifiers::NONE, KeyCode::Enter) => {
+                        app.handle_enter();
+                    }
+                    (KeyModifiers::NONE, KeyCode::Backspace) => {
+                        app.handle_backspace();
+                    }
                     _ => {}
                 },
                 Screen::Popup => {

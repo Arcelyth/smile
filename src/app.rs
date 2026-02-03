@@ -87,4 +87,40 @@ impl App {
         }
         Ok(())
     }
+
+    pub fn handle_backspace(&mut self) {
+        let (x, y) = (self.cursor_pos.0, self.cursor_pos.1);
+        
+        if x > 0 {
+            if let Some(buf) = self.buf_manager.get_current_buffer_mut() {
+                buf.content[y].remove(x - 1);
+                self.cursor_pos.0 -= 1;
+            }
+        } else if y > 0 {
+            if let Some(buf) = self.buf_manager.get_current_buffer_mut() {
+                let current_line = buf.content.remove(y);
+                let prev_line = &mut buf.content[y - 1];
+                let prev_len = prev_line.len();
+                
+                prev_line.push_str(&current_line);
+                
+                self.cursor_pos.1 -= 1;
+                self.cursor_pos.0 = prev_len;
+            }
+        }
+    }
+
+    pub fn handle_enter(&mut self) {
+        if let Some(buf) = self.buf_manager.get_current_buffer_mut() {
+            let (x, y) = (self.cursor_pos.0, self.cursor_pos.1);
+            let current_line = &mut buf.content[y];
+            
+            let next_line_content = current_line.split_off(x);
+            
+            buf.content.insert(y + 1, next_line_content);
+            
+            self.cursor_pos.1 += 1;
+            self.cursor_pos.0 = 0;
+        }
+    }
 }
