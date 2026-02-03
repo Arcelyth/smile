@@ -20,6 +20,8 @@ pub struct App {
     pub current_screen: Screen,
     pub current_mod: Mod,
     pub cursor_pos: (usize, usize),
+    pub scroll_offset: (usize, usize),
+    pub scroll_threshold: (usize, usize),
 }
 
 impl App {
@@ -28,6 +30,8 @@ impl App {
             buf_manager: BufferManager::new(),
             current_screen: Screen::Welcome,
             current_mod: Mod::Input,
+            scroll_offset: (0, 0),
+            scroll_threshold: (3, 3),
             cursor_pos: (0, 0),
         }
     }
@@ -121,6 +125,41 @@ impl App {
             
             self.cursor_pos.1 += 1;
             self.cursor_pos.0 = 0;
+        }
+    }
+
+    pub fn update_scroll(&mut self, viewport_height: usize, viewport_width: usize) {
+        let buf = if let Some(buf) = self.buf_manager.get_current_buffer() {
+            buf
+        } else {
+            println!("Failed to get buffer.");
+            return; 
+        };
+        let thres = self.scroll_threshold;
+        let total_lines = buf.content.len();
+        let (x, y) = &mut self.cursor_pos;
+        let width = buf.content[*y].len();
+        if *y >= total_lines {
+            *y = total_lines.saturating_sub(1);
+        }
+
+        if *y >= self.scroll_offset.1 + viewport_height {
+            self.scroll_offset.1 = *y - viewport_height + 1;
+        }
+
+        if *y < self.scroll_offset.1 {
+            self.scroll_offset.1 = *y;
+        }
+
+        if *x >= width + 1 {
+            *x = width.saturating_sub(1);
+        }
+
+        if *x >= self.scroll_offset.0 + viewport_width {
+            self.scroll_offset.0 = *x - viewport_width + 1;
+        }
+        if *x < self.scroll_offset.0 {
+            self.scroll_offset.0 = *x;
         }
     }
 }

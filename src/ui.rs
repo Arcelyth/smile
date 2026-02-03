@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{Screen, App};
 
-pub fn ui(frame: &mut Frame, app: &App) {
+pub fn ui(frame: &mut Frame, app: &mut App) {
      if let Screen::Welcome = app.current_screen {
         frame.render_widget(Clear, frame.area());
         let root = Layout::default()
@@ -68,6 +68,16 @@ pub fn ui(frame: &mut Frame, app: &App) {
             ])
             .split(root[0]);
 
+        // check the scrolling
+        let viewport_height = editor_main[1]
+            .height
+            .saturating_sub(2) as usize;
+        let viewport_width = editor_main[1]
+            .width
+            .saturating_sub(2) as usize;
+
+        app.update_scroll(viewport_height, viewport_width);
+
         let buf = if let Some(buf) = app.buf_manager.get_current_buffer() {
             buf
         } else {
@@ -75,9 +85,11 @@ pub fn ui(frame: &mut Frame, app: &App) {
             return; 
         };
 
+        let border_color = Color::Rgb(181, 235, 181);
+        let font_color = Color::Rgb(240, 235, 213);
         let line_num_block =  Block::default()
             .borders(Borders::LEFT | Borders::TOP | Borders::BOTTOM)
-            .border_style(Style::default().fg(Color::White))
+            .border_style(Style::default().fg(border_color))
             .style(Style::default().fg(Color::DarkGray));
         let total_lines = buf.content.len();
         let line_num: Vec<Line> = (1..=total_lines)
@@ -89,14 +101,16 @@ pub fn ui(frame: &mut Frame, app: &App) {
         })
         .collect();
         let line_num_text= Paragraph::new(Text::from(line_num))
-            .block(line_num_block);
+            .block(line_num_block)
+            .scroll((app.scroll_offset.1 as u16, 0));
+
         frame.render_widget(line_num_text, editor_main[0]);
 
         let editor_block = Block::default()
             .title(buf.name.as_ref())
             .borders(Borders::RIGHT | Borders::TOP | Borders::BOTTOM)
-            .border_style(Style::default().fg(Color::White))
-            .style(Style::default().fg(Color::White));
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default().fg(font_color));
 
         let lines: Vec<Line> = buf.content
             .iter()
@@ -105,15 +119,17 @@ pub fn ui(frame: &mut Frame, app: &App) {
 
         
         let content = Paragraph::new(Text::from(lines))
-            .block(editor_block);
+            .block(editor_block)
+            .scroll((app.scroll_offset.1 as u16, app.scroll_offset.0 as u16));
 
         frame.render_widget(content, editor_main[1]);
 
         // show the status bar
+        let status_bar_border_color = Color::Rgb(252, 207, 248);
         let status_bar_block = Block::default()
             .title("Status Bar")
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::LightMagenta));
+            .style(Style::default().fg(status_bar_border_color));
         let status_bar  = Paragraph::new("OK")
             .block(status_bar_block);
 
@@ -122,9 +138,8 @@ pub fn ui(frame: &mut Frame, app: &App) {
         // show the cursor
         let editor_area = editor_main[1];
 
-        let cursor_x = editor_area.x + app.cursor_pos.0 as u16;
-        let cursor_y = editor_area.y + app.cursor_pos.1 as u16 + 1;
-
+        let cursor_x = editor_area.x + (app.cursor_pos.0.saturating_sub(app.scroll_offset.0)) as u16;
+        let cursor_y = editor_area.y + (app.cursor_pos.1.saturating_sub(app.scroll_offset.1)) as u16 + 1;
         if cursor_x < editor_area.right() && cursor_y < editor_area.bottom() {
             frame.set_cursor(cursor_x, cursor_y);
         }
