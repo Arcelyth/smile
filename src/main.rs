@@ -1,4 +1,5 @@
-use ratatui::crossterm::event::EnableMouseCapture;
+use ratatui::crossterm::event::{EnableMouseCapture, Event};
+use ratatui::crossterm::event::{self, KeyCode, KeyEventKind};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{enable_raw_mode, EnterAlternateScreen};
 use ratatui::crossterm::event::DisableMouseCapture;
@@ -9,11 +10,14 @@ use std::io;
 use color_eyre::eyre::Result;
 
 mod app;
-use app::App;
+use app::{App, Screen};
 
 mod buffer;
 
 mod ui;
+use ui::ui;
+
+mod error;
 
 fn main() -> Result<()> {
     // setup terminal
@@ -40,7 +44,31 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
+where 
+    <B as Backend>::Error: Sync + Send + 'static 
+{ 
+    loop {
+        terminal.draw(|f| ui(f, app))?;
 
-    Ok(())
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
+            match app.current_screen {
+                Screen::Welcome => match key.code {
+                    KeyCode::Char('q') => {
+                        return Ok(());
+                    }
+                    _ => {}
+                },
+                _ => {
+                    if key.code == KeyCode::Esc {
+                        app.current_screen = Screen::Welcome;
+                    }
+                }
+            }
+        }
+    }
 }

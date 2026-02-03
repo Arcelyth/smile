@@ -22,7 +22,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             buf_manager: BufferManager::new(),
-            current_screen: Screen::Editor,
+            current_screen: Screen::Welcome,
             current_mod: Mod::Input,
         }
     }
