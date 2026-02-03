@@ -31,7 +31,18 @@ impl App {
             current_screen: Screen::Welcome,
             current_mod: Mod::Input,
             scroll_offset: (0, 0),
-            scroll_threshold: (3, 3),
+            scroll_threshold: (0, 0),
+            cursor_pos: (0, 0),
+        }
+    }
+
+    pub fn from(screen: Screen, buf_manager: BufferManager) -> Self {
+        Self {
+            buf_manager,
+            current_screen: screen,
+            current_mod: Mod::Input,
+            scroll_offset: (0, 0),
+            scroll_threshold: (0, 0),
             cursor_pos: (0, 0),
         }
     }
@@ -143,8 +154,8 @@ impl App {
             *y = total_lines.saturating_sub(1);
         }
 
-        if *y >= self.scroll_offset.1 + viewport_height {
-            self.scroll_offset.1 = *y - viewport_height + 1;
+        if *y >= (self.scroll_offset.1 + viewport_height).saturating_sub(thres.1) {
+            self.scroll_offset.1 = *y + thres.1 - viewport_height + 1;
         }
 
         if *y < self.scroll_offset.1 {
@@ -155,11 +166,12 @@ impl App {
             *x = width.saturating_sub(1);
         }
 
-        if *x >= self.scroll_offset.0 + viewport_width {
-            self.scroll_offset.0 = *x - viewport_width + 1;
+        if *x >= (self.scroll_offset.0 + viewport_width).saturating_sub(thres.0) {
+            self.scroll_offset.0 = *x + thres.0 - viewport_width + 1;
         }
         if *x < self.scroll_offset.0 {
             self.scroll_offset.0 = *x;
         }
     }
 }
+

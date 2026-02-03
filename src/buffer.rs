@@ -2,11 +2,14 @@
 
 use std::sync::Arc;
 use crate::error::*;
-
+use std::path::{Path, PathBuf};
+use std::fs::{File, read_to_string};
+use std::io::{self, Write};
 
 pub struct Buffer {
     pub content: Vec<String>,
     pub name: Arc<str>,
+    pub path: Option<PathBuf>,
 }
 
 impl Buffer {
@@ -14,6 +17,7 @@ impl Buffer {
         Self {
             content: vec![String::new()],
             name: Arc::from(name), 
+            path: None,
         }
     }
     pub fn from_content(content: &str, name: & str) -> Self {
@@ -21,8 +25,33 @@ impl Buffer {
         Self {
             content: c,
             name: Arc::from(name),
+            path: None,
         }
     } 
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+        let path_ref = path.as_ref();
+        let content_str = read_to_string(path_ref)?;
+        
+        let mut content: Vec<String> = content_str
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
+        
+        if content.is_empty() {
+            content.push(String::new());
+        }
+
+        let name = path_ref
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Untitled");
+
+        Ok(Self {
+            content,
+            name: Arc::from(name),
+            path: Some(path_ref.to_path_buf()),
+        })
+    }
     pub fn change_name(&mut self, name: &str) {
         self.name = Arc::from(name)
     }
@@ -74,6 +103,33 @@ impl Buffer {
         Ok(self.content.insert(y - 1, String::new()))   
     }
 
+    pub fn save(&mut self) -> io::Result<()> {
+        if let Some(ref path) = self.path {
+            self.save_to(path.clone())
+        } else {
+            Err(io::Error::new(io::ErrorKind::NotFound, "No file path bound to this buffer"))
+        }
+    }
+
+    pub fn save_to<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let path_ref = path.as_ref();
+        let mut file = File::create(path_ref)?; 
+        
+        for (i, line) in self.content.iter().enumerate() {
+            file.write_all(line.as_bytes())?;
+            if i < self.content.len() - 1 {
+                file.write_all(b"\n")?;
+            }
+        }
+
+        if self.path.is_none() {
+            self.path = Some(path_ref.to_path_buf());
+            if let Some(name) = path_ref.file_name().and_then(|n| n.to_str()) {
+                self.name = Arc::from(name);
+            }
+        }
+        Ok(())
+    }
 }
 
 pub struct BufferManager {
@@ -89,9 +145,14 @@ impl BufferManager {
         }
     }
 
-    pub fn add_buffer(&mut self, name: &str) {
+    pub fn add_new_buffer(&mut self, name: &str) {
         let new_buffer = Buffer::new(name);
         self.buffers.push(new_buffer);
+        self.current_buffer = Some(self.buffers.len() - 1);
+    }
+
+    pub fn add_buffer(&mut self, buf: Buffer) {
+        self.buffers.push(buf);
         self.current_buffer = Some(self.buffers.len() - 1);
     }
 

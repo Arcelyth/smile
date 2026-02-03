@@ -8,16 +8,21 @@ use ratatui::Terminal;
 use ratatui::backend::{CrosstermBackend, Backend};
 use std::io;
 use color_eyre::eyre::Result;
+use clap::Parser;
 
 mod app;
 use app::{App, Screen};
 
 mod buffer;
+use buffer::*;
 
 mod ui;
 use ui::ui;
 
 mod error;
+
+mod cli;
+use cli::Args;
 
 fn main() -> Result<()> {
     // setup terminal
@@ -28,8 +33,17 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stderr);
     let mut terminal = Terminal::new(backend)?;
 
+    let args = Args::parse();
+    let mut bm = BufferManager::new();
+    let init_screen = if let Some(p) =  args.path {
+        let buf = Buffer::from_file(p)?;
+        bm.add_buffer(buf);
+        Screen::Editor
+    } else {
+        Screen::Welcome
+    };
     // create app and run 
-    let mut app = App::new();
+    let mut app = App::from(init_screen, bm);
     run_app(&mut terminal, &mut app)?;
 
     // restore terminal
@@ -62,14 +76,25 @@ where
                         return Ok(());
                     }
                     KeyCode::Char('a') => {
-                        app.buf_manager.add_buffer("untitled");
+                        app.buf_manager.add_new_buffer("Untitled");
                         app.current_screen = Screen::Editor;
                     }
                     _ => {}
                 },
                 Screen::Editor => match (key.modifiers, key.code) {
+                    // exit
                     (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
                         return Ok(());
+                    }
+                    // save file
+                    (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                        if let Some(buf) = app.buf_manager.get_current_buffer_mut() {
+                            if buf.path.is_some() {
+                                let _ = buf.save(); 
+                            } else {
+                                let _ = buf.save_to("new_file.txt");
+                            }
+                        }
                     }
                     (_, KeyCode::Left) => app.mv_cursor_left(),
                     (_, KeyCode::Right) => app.mv_cursor_right(),
