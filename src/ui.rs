@@ -5,6 +5,7 @@ use ratatui::widgets::{Borders, Block, List, ListItem, Paragraph, ListDirection,
 use ratatui::Frame;
 
 use crate::app::{Screen, App};
+use crate::kaomoji::*;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
      if let Screen::Welcome = app.current_screen {
@@ -59,6 +60,15 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             ])
             .split(frame.area());
 
+        // editor frame include editor and status bar
+        let editor_frame = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(3), 
+                Constraint::Length(2), 
+            ])
+            .split(root[0]);
+
         // show the editor
         let editor_main = Layout::default()
             .direction(Direction::Horizontal)
@@ -66,7 +76,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 Constraint::Length(10), 
                 Constraint::Min(0), 
             ])
-            .split(root[0]);
+            .split(editor_frame[0]);
 
         // check the scrolling
         let viewport_height = editor_main[1]
@@ -88,7 +98,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         let border_color = Color::Rgb(181, 235, 181);
         let font_color = Color::Rgb(240, 235, 213);
         let line_num_block =  Block::default()
-            .borders(Borders::LEFT | Borders::TOP | Borders::BOTTOM)
+            .borders(Borders::LEFT | Borders::TOP)
             .border_style(Style::default().fg(border_color))
             .style(Style::default().fg(Color::DarkGray));
         let total_lines = buf.content.len();
@@ -108,7 +118,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
         let editor_block = Block::default()
             .title(buf.name.as_ref())
-            .borders(Borders::RIGHT | Borders::TOP | Borders::BOTTOM)
+            .borders(Borders::RIGHT | Borders::TOP)
             .border_style(Style::default().fg(border_color))
             .style(Style::default().fg(font_color));
 
@@ -124,16 +134,109 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
         frame.render_widget(content, editor_main[1]);
 
-        // show the status bar
-        let status_bar_border_color = Color::Rgb(252, 207, 248);
-        let status_bar_block = Block::default()
-            .title("Status Bar")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(status_bar_border_color));
-        let status_bar  = Paragraph::new("OK")
-            .block(status_bar_block);
+        // show the status bar 
+        let status_bar_main = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(25), 
+                Constraint::Percentage(25), 
+                Constraint::Percentage(25), 
+                Constraint::Percentage(25), 
+            ])
+            .split(editor_frame[1]);
 
-        frame.render_widget(status_bar, root[1]);
+        let status_pos_font_color = Color::Rgb(252, 207, 248);
+        let status_change_font_color = Color::Rgb(252, 207, 248);
+        let status_second_font_color = Color::Rgb(252, 207, 248);
+        let status_third_font_color = Color::Rgb(252, 207, 248);
+//        let status_bar_bg_color = Color::Rgb(56, 53, 52);
+
+        // show the status pos
+        let pos = app.cursor_pos;
+        let status_pos_block = Block::default()
+            .borders(Borders::BOTTOM | Borders::LEFT)
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default()
+                .fg(status_pos_font_color));
+        let status_pos  = Paragraph::new(format!("{}:{}", pos.1 + 1, pos.0 + 1))
+            .alignment(Alignment::Center)
+            .block(status_pos_block);
+
+        frame.render_widget(status_pos, status_bar_main[0]);
+
+        // show the second secondition of status bar
+        let status_second_block = Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default()
+                .fg(status_second_font_color));
+        let status_second  = Paragraph::new("-")
+            .alignment(Alignment::Center)
+            .block(status_second_block);
+
+        frame.render_widget(status_second, status_bar_main[1]);
+
+        // show the third thirdition of status bar
+        let status_third_block = Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default()
+                .fg(status_third_font_color));
+        let status_third  = Paragraph::new("-")
+            .alignment(Alignment::Center)
+            .block(status_third_block);
+
+        frame.render_widget(status_third, status_bar_main[2]);
+
+        // show the change
+        let status_ch_block = Block::default()
+            .borders(Borders::BOTTOM | Borders::RIGHT)
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default()
+                .fg(status_change_font_color));
+        let status_ch  = Paragraph::new("-")
+            .alignment(Alignment::Center)
+            .block(status_ch_block);
+
+        frame.render_widget(status_ch, status_bar_main[3]);
+
+
+
+        // command frame include kaomoji and command line
+        let command_line_frame = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(8), 
+                Constraint::Min(3), 
+            ])
+            .split(root[1]);
+
+        let command_line_border_color = Color::Rgb(252, 207, 248);
+        let kaomoji_color = Color::Rgb(226, 230, 156);
+        let command_line_text_color = Color::Rgb(252, 207, 248);
+
+        // show command line
+        let kaomoji_block = Block::default()
+            .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
+            .border_style(Style::default().fg(command_line_border_color))
+            .style(Style::default().fg(kaomoji_color));
+        let kmj = get_kaomoji(KaoMoJi::Smile); 
+        let kaomoji  = Paragraph::new(kmj)
+            .alignment(Alignment::Center)
+            .block(kaomoji_block);
+
+        frame.render_widget(kaomoji, command_line_frame[0]);
+
+        // show command line
+        let command_line_block = Block::default()
+            .borders(Borders::TOP | Borders::RIGHT | Borders::BOTTOM)
+            .border_style(Style::default().fg(command_line_border_color))
+            .style(Style::default().fg(command_line_text_color));
+
+        let command_line  = Paragraph::new(":")
+            .block(command_line_block);
+
+        frame.render_widget(command_line, command_line_frame[1]);
 
         // show the cursor
         let editor_area = editor_main[1];
@@ -141,7 +244,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         let cursor_x = editor_area.x + (app.cursor_pos.0.saturating_sub(app.scroll_offset.0)) as u16;
         let cursor_y = editor_area.y + (app.cursor_pos.1.saturating_sub(app.scroll_offset.1)) as u16 + 1;
         if cursor_x < editor_area.right() && cursor_y < editor_area.bottom() {
-            frame.set_cursor(cursor_x, cursor_y);
+            frame.set_cursor_position((cursor_x, cursor_y));
         }
     }
 }
@@ -156,4 +259,5 @@ fn get_banner() -> String {
 ╚══════╝╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
     "#.to_string()
 }
+
 

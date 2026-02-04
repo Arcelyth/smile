@@ -13,6 +13,7 @@ pub enum Screen {
 #[derive(Debug)]
 pub enum Mod {
     Input,
+    Commanding,
 }
 
 pub struct App {

@@ -24,6 +24,8 @@ mod error;
 mod cli;
 use cli::Args;
 
+mod kaomoji;
+
 fn main() -> Result<()> {
     // setup terminal
     color_eyre::install()?;
