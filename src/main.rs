@@ -24,7 +24,7 @@ mod error;
 mod cli;
 use cli::Args;
 
-mod kaomoji;
+mod command;
 
 fn main() -> Result<()> {
     // setup terminal
@@ -71,7 +71,6 @@ where
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-
             match app.current_screen {
                 Screen::Welcome => match key.code {
                     KeyCode::Char('q') => {
@@ -83,41 +82,74 @@ where
                     }
                     _ => {}
                 },
-                Screen::Editor => match (key.modifiers, key.code) {
-                    // exit
-                    (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
+                Screen::Editor => {
+                    let cur_buf = if let Some(b) = app.buf_manager.get_current_buffer_mut() {
+                        b
+                    } else {
                         return Ok(());
-                    }
-                    // save file
-                    (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
-                        if let Some(buf) = app.buf_manager.get_current_buffer_mut() {
-                            if buf.path.is_some() {
-                                let _ = buf.save(); 
+                    };
+                   
+                    match (key.modifiers, key.code) {
+                        // exit
+                        (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
+                            return Ok(());
+                        }
+                        // save file
+                        (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                            if cur_buf.path.is_some() {
+                                let _ = cur_buf.save(); 
                             } else {
-                                let _ = buf.save_to("new_file.txt");
+                                let _ = cur_buf.save_to("new_file.txt");
                             }
                         }
-                    }
-                    (_, KeyCode::Left) => app.mv_cursor_left(),
-                    (_, KeyCode::Right) => app.mv_cursor_right(),
-                    (_, KeyCode::Up) => app.mv_cursor_up(),
-                    (_, KeyCode::Down) => app.mv_cursor_down(),
-                    (KeyModifiers::NONE, KeyCode::Char(ch)) => {
-                        if let Ok(_) = app.insert_char(ch) {
-                            app.mv_cursor_right();
+                        // active the command line
+                        (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
+                            app.current_screen = Screen::Command;
                         }
+
+                        (_, KeyCode::Left) => cur_buf.mv_cursor_left(),
+                        (_, KeyCode::Right) => cur_buf.mv_cursor_right(),
+                        (_, KeyCode::Up) => cur_buf.mv_cursor_up(),
+                        (_, KeyCode::Down) => cur_buf.mv_cursor_down(),
+                        (KeyModifiers::NONE, KeyCode::Char(ch)) => {
+                            if let Ok(_) = cur_buf.add_content_at(ch.to_string().as_str()) {
+                                cur_buf.mv_cursor_right();
+                            }
+                        }
+                        (KeyModifiers::NONE, KeyCode::Enter) => {
+                            cur_buf.handle_enter();
+                        }
+                        (KeyModifiers::NONE, KeyCode::Backspace) => {
+                            cur_buf.handle_backspace();
+                        }
+                        _ => {}
                     }
-                    (KeyModifiers::NONE, KeyCode::Enter) => {
-                        app.handle_enter();
-                    }
-                    (KeyModifiers::NONE, KeyCode::Backspace) => {
-                        app.handle_backspace();
-                    }
-                    _ => {}
                 },
-                Screen::Popup => {
-                    if key.code == KeyCode::Esc {
-                        app.current_screen = Screen::Welcome;
+                Screen::Command => {
+                    let cur_cmd = &mut app.command;
+                    match (key.modifiers, key.code) {
+
+                        // exit
+                        (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
+                            cur_cmd.clean();
+                            app.current_screen = Screen::Editor 
+                        }
+                        (KeyModifiers::NONE, KeyCode::Char(ch)) => {
+                            if let Ok(_) = cur_cmd.add_content_at(ch.to_string().as_str()) {
+                                cur_cmd.mv_cursor_right();
+                            }
+                        }
+                        (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
+                        (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
+                        (KeyModifiers::NONE, KeyCode::Enter) => {
+                            cur_cmd.handle_command();
+                            cur_cmd.clean();
+                        }
+                        (KeyModifiers::NONE, KeyCode::Backspace) => {
+                            cur_cmd.handle_backspace();
+                        }
+
+                        _ => {}
                     }
                 }
             }

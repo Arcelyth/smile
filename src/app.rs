@@ -2,12 +2,13 @@
 
 use crate::buffer::BufferManager;
 use crate::error::BufferError;
+use crate::command::*;
 
 #[derive(Debug)]
 pub enum Screen {
     Welcome,
     Editor,
-    Popup, 
+    Command,
 }
 
 #[derive(Debug)]
@@ -18,6 +19,7 @@ pub enum Mod {
 
 pub struct App {
     pub buf_manager: BufferManager,
+    pub command: KaoCo,
     pub current_screen: Screen,
     pub current_mod: Mod,
     pub cursor_pos: (usize, usize),
@@ -29,6 +31,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             buf_manager: BufferManager::new(),
+            command: KaoCo::new(),
             current_screen: Screen::Welcome,
             current_mod: Mod::Input,
             scroll_offset: (0, 0),
@@ -40,6 +43,7 @@ impl App {
     pub fn from(screen: Screen, buf_manager: BufferManager) -> Self {
         Self {
             buf_manager,
+            command: KaoCo::new(),
             current_screen: screen,
             current_mod: Mod::Input,
             scroll_offset: (0, 0),
@@ -99,7 +103,7 @@ impl App {
         if let Some(buf) = self.buf_manager.get_current_buffer_mut() {
             let cur_pos = self.cursor_pos;
             let c = format!("{}", ch);
-            buf.add_content_at(cur_pos.0 + 1, cur_pos.1 + 1, c.as_str())?;
+            buf.add_content_at( c.as_str())?;
         }
         Ok(())
     }

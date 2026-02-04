@@ -10,6 +10,9 @@ pub struct Buffer {
     pub content: Vec<String>,
     pub name: Arc<str>,
     pub path: Option<PathBuf>,
+    pub cursor_pos: (usize, usize),
+    pub scroll_offset: (usize, usize),
+    pub scroll_thres: (usize, usize),
 }
 
 impl Buffer {
@@ -18,6 +21,9 @@ impl Buffer {
             content: vec![String::new()],
             name: Arc::from(name), 
             path: None,
+            cursor_pos: (0, 0),
+            scroll_offset: (0, 0),
+            scroll_thres: (0, 0),
         }
     }
     pub fn from_content(content: &str, name: & str) -> Self {
@@ -26,6 +32,9 @@ impl Buffer {
             content: c,
             name: Arc::from(name),
             path: None,
+            cursor_pos: (0, 0),
+            scroll_offset: (0, 0),
+            scroll_thres: (0, 0),
         }
     } 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
@@ -50,6 +59,9 @@ impl Buffer {
             content,
             name: Arc::from(name),
             path: Some(path_ref.to_path_buf()),
+            cursor_pos: (0, 0),
+            scroll_offset: (0, 0),
+            scroll_thres: (0, 0),
         })
     }
     pub fn change_name(&mut self, name: &str) {
@@ -60,47 +72,51 @@ impl Buffer {
         self.content.len()        
     }
 
-    // x, y start from 1
-    pub fn change_content_at(&mut self, x: usize, y: usize, len: usize, replace_str: &str) -> Result<(), BufferError> {
-        if self.get_line_count() < y {
+    pub fn change_content_at(&mut self, len: usize, replace_str: &str) -> Result<(), BufferError> {
+        let (x, y) = self.cursor_pos;
+        if self.get_line_count() <= y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        self.content[y-1].replace_range(x-1..x+len, replace_str);
+        self.content[y].replace_range(x..x+len, replace_str);
         Ok(())
     }
 
-    pub fn delete_content_at(&mut self, x: usize, y: usize, len: usize) -> Result<(), BufferError> {
-         if self.get_line_count() < y {
+    pub fn delete_content_at(&mut self, len: usize) -> Result<(), BufferError> {
+        let (x, y) = self.cursor_pos;
+        if self.get_line_count() <= y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        self.content[y-1].drain(x-1..x+len);
+        self.content[y].drain(x..x+len);
         Ok(())
     }
 
-    pub fn add_content_at(&mut self, x: usize, y: usize, add_str: &str) -> Result<(), BufferError> {
-         if self.get_line_count() < y {
+    pub fn add_content_at(&mut self, add_str: &str) -> Result<(), BufferError> {
+        let (x, y) = self.cursor_pos;
+         if self.get_line_count() <= y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        Ok(self.content[y-1].insert_str(x-1, add_str))
+        Ok(self.content[y].insert_str(x, add_str))
     }
 
-    pub fn delete_line(&mut self, y: usize) -> Result<String, BufferError> {
-        if self.get_line_count() < y {
+    pub fn delete_line(&mut self) -> Result<String, BufferError> {
+        let y = self.cursor_pos.1;
+        if self.get_line_count() <= y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        Ok(self.content.remove(y - 1)) 
+        Ok(self.content.remove(y)) 
     }
 
-    pub fn add_new_line(&mut self, y: usize) -> Result<(), BufferError> {
-        if self.get_line_count() < y {
+    pub fn add_new_line(&mut self) -> Result<(), BufferError> {
+        let y = self.cursor_pos.1;
+        if self.get_line_count() <= y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        Ok(self.content.insert(y - 1, String::new()))   
+        Ok(self.content.insert(y, String::new()))   
     }
 
     pub fn save(&mut self) -> io::Result<()> {
@@ -130,6 +146,106 @@ impl Buffer {
         }
         Ok(())
     }
+
+    pub fn mv_cursor_right(&mut self) {
+        let cur_pos = &mut self.cursor_pos;
+        let line_len = self.content[cur_pos.1].len();
+
+        if cur_pos.0 < line_len {
+            cur_pos.0 += 1;
+        } else if cur_pos.1 < self.content.len() - 1 {
+            cur_pos.1 += 1;
+            cur_pos.0 = 0;
+        }
+    }
+
+    pub fn mv_cursor_left(&mut self) {
+        let cur_pos = &mut self.cursor_pos;
+        if cur_pos.0 > 0 {
+            cur_pos.0 -= 1;
+        } else if cur_pos.1 > 0 {
+            cur_pos.1 -= 1;
+            cur_pos.0 = self.content[cur_pos.1].len();
+        }
+    }
+
+    pub fn mv_cursor_up(&mut self) {
+        if self.cursor_pos.1 > 0 {
+            self.cursor_pos.1 -= 1;
+            self.cursor_pos.0 = self.cursor_pos.0.min(self.content[self.cursor_pos.1].len());
+        }
+    }
+
+    pub fn mv_cursor_down(&mut self) {
+        self.cursor_pos.1 += 1;
+        if self.cursor_pos.1 >= self.content.len() {
+            self.content.push(String::new());
+            self.cursor_pos.0 = 0;
+        } else {
+            self.cursor_pos.0 = self.cursor_pos.0.min(self.content[self.cursor_pos.1].len());
+        }
+    }
+
+     pub fn handle_backspace(&mut self) {
+        let (x, y) = (self.cursor_pos.0, self.cursor_pos.1);
+        
+        if x > 0 {
+            self.content[y].remove(x - 1);
+            self.cursor_pos.0 -= 1;
+        } else if y > 0 {
+            let current_line = self.content.remove(y);
+            let prev_line = &mut self.content[y - 1];
+            let prev_len = prev_line.len();
+            
+            prev_line.push_str(&current_line);
+            
+            self.cursor_pos.1 -= 1;
+            self.cursor_pos.0 = prev_len;
+        }
+    }
+
+    pub fn handle_enter(&mut self) {
+        let (x, y) = (self.cursor_pos.0, self.cursor_pos.1);
+        let current_line = &mut self.content[y];
+        
+        let next_line_content = current_line.split_off(x);
+        
+        self.content.insert(y + 1, next_line_content);
+        
+        self.cursor_pos.1 += 1;
+        self.cursor_pos.0 = 0;
+    }
+
+    pub fn update_scroll(&mut self, viewport_height: usize, viewport_width: usize) {
+        let thres = self.scroll_thres;
+        let total_lines = self.content.len();
+        let (x, y) = &mut self.cursor_pos;
+        let width = self.content[*y].len();
+        if *y >= total_lines {
+            *y = total_lines.saturating_sub(1);
+        }
+
+        if *y >= (self.scroll_offset.1 + viewport_height).saturating_sub(thres.1) {
+            self.scroll_offset.1 = *y + thres.1 - viewport_height + 1;
+        }
+
+        if *y < self.scroll_offset.1 {
+            self.scroll_offset.1 = *y;
+        }
+
+        if *x >= width + 1 {
+            *x = width.saturating_sub(1);
+        }
+
+        if *x >= (self.scroll_offset.0 + viewport_width).saturating_sub(thres.0) {
+            self.scroll_offset.0 = *x + thres.0 - viewport_width + 1;
+        }
+        if *x < self.scroll_offset.0 {
+            self.scroll_offset.0 = *x;
+        }
+    }
+
+
 }
 
 pub struct BufferManager {
