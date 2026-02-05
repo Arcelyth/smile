@@ -1313,6 +1313,8 @@ dependencies = [
  "clap",
  "color-eyre",
  "ratatui",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

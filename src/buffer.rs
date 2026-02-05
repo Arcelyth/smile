@@ -1,10 +1,12 @@
 #![allow(dead_code)]
-
+use unicode_width::UnicodeWidthStr;
+use unicode_segmentation::UnicodeSegmentation;
 use std::sync::Arc;
-use crate::error::*;
 use std::path::{Path, PathBuf};
 use std::fs::{File, read_to_string};
 use std::io::{self, Write};
+use crate::utils::*;
+use crate::error::*;
 
 pub struct Buffer {
     pub content: Vec<String>,
@@ -72,33 +74,37 @@ impl Buffer {
         self.content.len()        
     }
 
-    pub fn change_content_at(&mut self, len: usize, replace_str: &str) -> Result<(), BufferError> {
+    pub fn delete_content_at(&mut self, len_in_chars: usize) -> Result<(), BufferError> {
         let (x, y) = self.cursor_pos;
-        if self.get_line_count() <= y {
-            println!("[Warning]: Change content at a invalid position.");
-            return Err(BufferError::InvalidPosition);
-        }
-        self.content[y].replace_range(x..x+len, replace_str);
+        if y >= self.content.len() { return Err(BufferError::InvalidPosition); }
+        
+        let line = &mut self.content[y];
+        let start_byte = char_to_byte_idx(line, x);
+        let end_byte = char_to_byte_idx(line, x + len_in_chars);
+        
+        line.drain(start_byte..end_byte);
         Ok(())
     }
 
-    pub fn delete_content_at(&mut self, len: usize) -> Result<(), BufferError> {
+    pub fn change_content_at(&mut self, len_in_chars: usize, replace_str: &str) -> Result<(), BufferError> {
         let (x, y) = self.cursor_pos;
-        if self.get_line_count() <= y {
-            println!("[Warning]: Change content at a invalid position.");
-            return Err(BufferError::InvalidPosition);
-        }
-        self.content[y].drain(x..x+len);
+        if y >= self.content.len() { return Err(BufferError::InvalidPosition); }
+        
+        let line = &mut self.content[y];
+        let start_byte = char_to_byte_idx(line, x);
+        let end_byte = char_to_byte_idx(line, x + len_in_chars);
+        
+        line.replace_range(start_byte..end_byte, replace_str);
         Ok(())
     }
 
     pub fn add_content_at(&mut self, add_str: &str) -> Result<(), BufferError> {
         let (x, y) = self.cursor_pos;
-         if self.get_line_count() <= y {
-            println!("[Warning]: Change content at a invalid position.");
-            return Err(BufferError::InvalidPosition);
-        }
-        Ok(self.content[y].insert_str(x, add_str))
+        if y >= self.content.len() { return Err(BufferError::InvalidPosition); }
+        
+        let byte_idx = char_to_byte_idx(&self.content[y], x);
+        self.content[y].insert_str(byte_idx, add_str);
+        Ok(())
     }
 
     pub fn delete_line(&mut self) -> Result<String, BufferError> {
@@ -148,10 +154,11 @@ impl Buffer {
     }
 
     pub fn mv_cursor_right(&mut self) {
+        let line = &self.content[self.cursor_pos.1];
+        let char_count = get_line_len(line);
         let cur_pos = &mut self.cursor_pos;
-        let line_len = self.content[cur_pos.1].len();
 
-        if cur_pos.0 < line_len {
+        if cur_pos.0 < char_count {
             cur_pos.0 += 1;
         } else if cur_pos.1 < self.content.len() - 1 {
             cur_pos.1 += 1;
@@ -160,56 +167,55 @@ impl Buffer {
     }
 
     pub fn mv_cursor_left(&mut self) {
-        let cur_pos = &mut self.cursor_pos;
-        if cur_pos.0 > 0 {
-            cur_pos.0 -= 1;
-        } else if cur_pos.1 > 0 {
-            cur_pos.1 -= 1;
-            cur_pos.0 = self.content[cur_pos.1].len();
+        if self.cursor_pos.0 > 0 {
+            self.cursor_pos.0 -= 1;
+        } else if self.cursor_pos.1 > 0 {
+            self.cursor_pos.1 -= 1;
+            self.cursor_pos.0 = get_line_len(&self.content[self.cursor_pos.1])
         }
     }
 
     pub fn mv_cursor_up(&mut self) {
         if self.cursor_pos.1 > 0 {
             self.cursor_pos.1 -= 1;
-            self.cursor_pos.0 = self.cursor_pos.0.min(self.content[self.cursor_pos.1].len());
+            self.cursor_pos.0 = self.cursor_pos.0.min(get_line_len(&self.content[self.cursor_pos.1]));
         }
     }
 
     pub fn mv_cursor_down(&mut self) {
-        self.cursor_pos.1 += 1;
-        if self.cursor_pos.1 >= self.content.len() {
-            self.content.push(String::new());
-            self.cursor_pos.0 = 0;
+        if self.cursor_pos.1 < self.content.len() - 1 {
+            self.cursor_pos.1 += 1;
+            self.cursor_pos.0 = self.cursor_pos.0.min(get_line_len(&self.content[self.cursor_pos.1]));
         } else {
-            self.cursor_pos.0 = self.cursor_pos.0.min(self.content[self.cursor_pos.1].len());
+            self.content.push(String::new());
+            self.cursor_pos.1 += 1;
+            self.cursor_pos.0 = 0;
         }
     }
 
-     pub fn handle_backspace(&mut self) {
-        let (x, y) = (self.cursor_pos.0, self.cursor_pos.1);
-        
+    pub fn handle_backspace(&mut self) {
+        let (x, y) = self.cursor_pos;
         if x > 0 {
-            self.content[y].remove(x - 1);
+            let line = &mut self.content[y];
+            let byte_idx = char_to_byte_idx(line, x - 1);
+            line.remove(byte_idx);
             self.cursor_pos.0 -= 1;
         } else if y > 0 {
             let current_line = self.content.remove(y);
             let prev_line = &mut self.content[y - 1];
-            let prev_len = prev_line.len();
+            let prev_char_len = get_line_len(prev_line);
             
             prev_line.push_str(&current_line);
-            
             self.cursor_pos.1 -= 1;
-            self.cursor_pos.0 = prev_len;
+            self.cursor_pos.0 = prev_char_len;
         }
     }
 
     pub fn handle_enter(&mut self) {
-        let (x, y) = (self.cursor_pos.0, self.cursor_pos.1);
-        let current_line = &mut self.content[y];
+        let (x, y) = self.cursor_pos;
+        let byte_idx = char_to_byte_idx(&self.content[y], x);
         
-        let next_line_content = current_line.split_off(x);
-        
+        let next_line_content = self.content[y].split_off(byte_idx);
         self.content.insert(y + 1, next_line_content);
         
         self.cursor_pos.1 += 1;
@@ -245,8 +251,20 @@ impl Buffer {
         }
     }
 
+    pub fn get_visual_width_upto(&self, line_idx: usize, char_idx: usize) -> usize {
+        let line = &self.content[line_idx];
+        line.graphemes(true)
+            .take(char_idx)
+            .map(|g| g.width())
+            .sum()
+    }
 
+    pub fn get_line_visual_width(&self, line_idx: usize) -> usize {
+        self.content[line_idx].width()
+    }
 }
+
+
 
 pub struct BufferManager {
     pub buffers: Vec<Buffer>,
@@ -310,3 +328,5 @@ impl BufferManager {
         }
     }
 }
+
+

@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, List, ListDirection, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
 use crate::app::{App, Screen};
 use crate::command::*;
@@ -161,7 +161,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 .borders(Borders::BOTTOM)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().fg(status_second_font_color));
-            let status_second = Paragraph::new("-")
+            let status_second = Paragraph::new(format!("{}%", (pos.1 + 1) * 100 / buf.content.len()))
                 .alignment(Alignment::Center)
                 .block(status_second_block);
 
@@ -245,19 +245,18 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             match app.current_screen {
                 Screen::Editor => {
                     let editor_area = editor_main[1];
-
-                    let cursor_x =
-                        editor_area.x + (buf.cursor_pos.0.saturating_sub(buf.scroll_offset.0)) as u16;
-                    let cursor_y =
-                        editor_area.y + (buf.cursor_pos.1.saturating_sub(buf.scroll_offset.1)) as u16 + 1;
+                    let vx = buf.get_visual_width_upto(buf.cursor_pos.1, buf.cursor_pos.0);
+                    let cursor_x = editor_area.x + (vx.saturating_sub(buf.scroll_offset.0)) as u16;
+                    let cursor_y = editor_area.y + (buf.cursor_pos.1.saturating_sub(buf.scroll_offset.1)) as u16 + 1;
                     if cursor_x < editor_area.right() && cursor_y < editor_area.bottom() {
                         frame.set_cursor_position((cursor_x, cursor_y));
                     }
                 }
                 Screen::Command => {
                     let command_line_area = command_line_frame[1];
+                    let vx = cmd.get_visual_width_upto(cmd.cursor_pos.0);
                     let cursor_x =
-                        command_line_area.x + (cmd.cursor_pos.0.saturating_sub(cmd.scroll_offset.0)) as u16 + 2;
+                        command_line_area.x + (vx.saturating_sub(cmd.scroll_offset.0)) as u16 + 2;
                     let cursor_y =
                         command_line_area.y + (cmd.cursor_pos.1.saturating_sub(cmd.scroll_offset.1)) as u16 + 1;
                     if cursor_x < command_line_area.right() && cursor_y < command_line_area.bottom() {

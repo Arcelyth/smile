@@ -1,6 +1,8 @@
 #![allow(dead_code)]
-
+use unicode_width::UnicodeWidthStr;
+use unicode_segmentation::UnicodeSegmentation;
 use crate::error::BufferError;
+use crate::utils::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum KaoMoJi {
@@ -42,7 +44,11 @@ impl KaoCo {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        self.content.replace_range(x..x+len, replace_str);
+        let line = &mut self.content;
+        let start_byte = char_to_byte_idx(line, x);
+        let end_byte = char_to_byte_idx(line, x + len);
+
+        self.content.replace_range(start_byte..end_byte, replace_str);
         Ok(())
     }
 
@@ -52,64 +58,56 @@ impl KaoCo {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        self.content.drain(x..x+len);
+        let line = &mut self.content;
+        let start_byte = char_to_byte_idx(line, x);
+        let end_byte = char_to_byte_idx(line, x + len);
+        
+        self.content.drain(start_byte..end_byte);
+
         Ok(())
     }
 
     pub fn add_content_at(&mut self, add_str: &str) -> Result<(), BufferError> {
         let x = self.cursor_pos.0;
-        if x > self.content.len()  {
+        if x > get_line_len(&self.content)  {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        Ok(self.content.insert_str(x, add_str))
+
+        let byte_idx = char_to_byte_idx(&self.content, x);
+        Ok(self.content.insert_str(byte_idx, add_str))
     }
 
     pub fn mv_cursor_right(&mut self) {
-        let line_str = &self.content;
-        let x_byte = self.cursor_pos.0;
-        
-        if x_byte < line_str.len() {
-            let next_pos = line_str[x_byte..]
-                .char_indices()
-                .nth(1)
-                .map(|(idx, _)| x_byte + idx)
-                .unwrap_or_else(|| line_str.len());
-            self.cursor_pos.0 = next_pos;
-        }
+        let line = &self.content;
+        let char_count = get_line_len(line);
+        let cur_pos = &mut self.cursor_pos;
+
+        if cur_pos.0 < char_count {
+            cur_pos.0 += 1;
+        } 
     }
 
     pub fn mv_cursor_left(&mut self) {
-        let x_byte = self.cursor_pos.0;
-        if x_byte > 0 {
-            let prev_pos = self.content[..x_byte]
-                .char_indices()
-                .last()
-                .map(|(idx, _)| idx)
-                .unwrap_or(0);
-            self.cursor_pos.0 = prev_pos;
-        }
+        if self.cursor_pos.0 > 0 {
+            self.cursor_pos.0 -= 1;
+        } 
     }
 
     pub fn handle_backspace(&mut self) {
-        let x_byte = self.cursor_pos.0;
-        if x_byte > 0 {
-            let prev_pos = self.content[..x_byte]
-                .char_indices()
-                .last()
-                .map(|(idx, _)| idx)
-                .unwrap_or(0);
-            
-            self.content.remove(prev_pos);
-            self.cursor_pos.0 = prev_pos;
-        }
+        let x = self.cursor_pos.0;
+        if x > 0 {
+            let line = &mut self.content;
+            let byte_idx = char_to_byte_idx(line, x - 1);
+            line.remove(byte_idx);
+            self.cursor_pos.0 -= 1;
+        } 
     }
-
+   
     pub fn update_scroll(&mut self, viewport_width: usize) {
         let thres = 0; 
-        let x = self.cursor_pos.0;
         
-        let visual_x = self.content[..x].len();
+        let visual_x = get_line_len(&self.content);
 
         if visual_x >= (self.scroll_offset.0 + viewport_width).saturating_sub(thres) {
             self.scroll_offset.0 = visual_x + thres - viewport_width + 1;
@@ -119,6 +117,15 @@ impl KaoCo {
             self.scroll_offset.0 = visual_x.saturating_sub(thres);
         }
     }
+
+    pub fn get_visual_width_upto(&self, char_idx: usize) -> usize {
+        let line = &self.content;
+        line.graphemes(true)
+            .take(char_idx)
+            .map(|g| g.width())
+            .sum()
+    }
+
 
     pub fn handle_command(&mut self) {
          
