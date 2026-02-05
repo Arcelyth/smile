@@ -3,8 +3,9 @@ use unicode_width::UnicodeWidthStr;
 use unicode_segmentation::UnicodeSegmentation;
 use std::sync::Arc;
 use std::path::{Path, PathBuf};
-use std::fs::{File, read_to_string};
+use std::fs::{self, File, read_to_string};
 use std::io::{self, Write};
+use color_eyre::Result;
 use crate::utils::*;
 use crate::error::*;
 
@@ -15,6 +16,7 @@ pub struct Buffer {
     pub cursor_pos: (usize, usize),
     pub scroll_offset: (usize, usize),
     pub scroll_thres: (usize, usize),
+    pub file_info: Option<FileInfo>,
 }
 
 impl Buffer {
@@ -26,6 +28,7 @@ impl Buffer {
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
+            file_info: Some(FileInfo::new()),
         }
     }
     pub fn from_content(content: &str, name: & str) -> Self {
@@ -37,10 +40,14 @@ impl Buffer {
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
+            file_info: Some(FileInfo::new()),
         }
     } 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, BufferError> {
         let path_ref = path.as_ref();
+        if !path_ref.is_file() {
+            return Err(BufferError::NotAFile);
+        }
         let content_str = read_to_string(path_ref)?;
         
         let mut content: Vec<String> = content_str
@@ -57,14 +64,17 @@ impl Buffer {
             .and_then(|n| n.to_str())
             .unwrap_or("Untitled");
 
-        Ok(Self {
+        let mut s = Self {
             content,
             name: Arc::from(name),
             path: Some(path_ref.to_path_buf()),
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
-        })
+            file_info: None,
+        };
+        s.refresh_file_info().unwrap();
+        Ok(s)
     }
     pub fn change_name(&mut self, name: &str) {
         self.name = Arc::from(name)
@@ -150,6 +160,9 @@ impl Buffer {
                 self.name = Arc::from(name);
             }
         }
+        if let Err(e) = self.refresh_file_info() {
+            println!("error: {:?}", e);
+        };
         Ok(())
     }
 
@@ -262,9 +275,31 @@ impl Buffer {
     pub fn get_line_visual_width(&self, line_idx: usize) -> usize {
         self.content[line_idx].width()
     }
+
+    pub fn refresh_file_info(&mut self) -> Result<()> {
+        let path_str = match &self.path {
+            Some(p) => match p.to_str() {
+                Some(s) => s,
+                None => return Ok(()),
+            },
+            None => return Ok(()),
+        };
+
+        let metadata = fs::metadata(path_str)?;
+
+        let info = FileInfo {
+            size: metadata.len(), 
+            read_only: metadata.permissions().readonly(),
+            format: detect_line_ending(&self.content.join(""))
+        };
+       
+        self.file_info = Some(info);
+        Ok(())
+    }
+    
+    
+
 }
-
-
 
 pub struct BufferManager {
     pub buffers: Vec<Buffer>,

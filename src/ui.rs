@@ -6,6 +6,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
 use crate::app::{App, Screen};
 use crate::command::*;
+use crate::utils::*;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
     match app.current_screen {
@@ -131,18 +132,19 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             let status_bar_main = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
                 ])
                 .split(editor_frame[1]);
 
             let status_pos_font_color = Color::Rgb(252, 207, 248);
-            let status_change_font_color = Color::Rgb(252, 207, 248);
-            let status_second_font_color = Color::Rgb(252, 207, 248);
-            let status_third_font_color = Color::Rgb(252, 207, 248);
-            //        let status_bar_bg_color = Color::Rgb(56, 53, 52);
+            let status_second_font_color = Color::Rgb(240, 172, 125);
+            let status_third_font_color = Color::Rgb(240, 186, 89);
+            let status_forth_font_color = Color::Rgb(210, 240, 105);
+            let status_last_font_color = Color::Rgb(210, 240, 105);
 
             // show the status pos
             let pos = buf.cursor_pos;
@@ -167,27 +169,57 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
             frame.render_widget(status_second, status_bar_main[1]);
 
-            // show the third thirdition of status bar
+            // show the third position of status bar
+            let buf_size = if let Some(info) = &buf.file_info {
+                info.size
+            } else {
+                0
+            };
             let status_third_block = Block::default()
                 .borders(Borders::BOTTOM)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().fg(status_third_font_color));
-            let status_third = Paragraph::new("-")
+            let status_third = Paragraph::new(format!("{} B", buf_size))
                 .alignment(Alignment::Center)
                 .block(status_third_block);
 
             frame.render_widget(status_third, status_bar_main[2]);
 
-            // show the change
-            let status_ch_block = Block::default()
+            // show the forth position of status bar 
+            let buf_fmt = if let Some(info) = &buf.file_info {
+                get_format_text(info.format.clone())
+            } else {
+                "-"
+            };
+
+            let status_last_block = Block::default()
+                .borders(Borders::BOTTOM )
+                .border_style(Style::default().fg(border_color))
+                .style(Style::default().fg(status_last_font_color));
+            let status_last = Paragraph::new(buf_fmt)
+                .alignment(Alignment::Center)
+                .block(status_last_block);
+
+            frame.render_widget(status_last, status_bar_main[3]);
+
+
+
+            // show the last position of status bar
+            let status_last_block = Block::default()
                 .borders(Borders::BOTTOM | Borders::RIGHT)
                 .border_style(Style::default().fg(border_color))
-                .style(Style::default().fg(status_change_font_color));
-            let status_ch = Paragraph::new("-")
+                .style(Style::default().fg(status_last_font_color));
+            let is_rd_only = if let Some(info) = &buf.file_info {
+                info.read_only
+            } else {
+                true
+            };
+            let last_text = if is_rd_only { "READONLY" } else {"-"};
+            let status_last = Paragraph::new(last_text)
                 .alignment(Alignment::Center)
-                .block(status_ch_block);
+                .block(status_last_block);
 
-            frame.render_widget(status_ch, status_bar_main[3]);
+            frame.render_widget(status_last, status_bar_main[4]);
 
             // command frame include kaomoji and command line
             let cmd = &mut app.command;
