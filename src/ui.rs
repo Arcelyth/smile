@@ -249,10 +249,14 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             };
 
             // show kaomoji
-            match app.current_screen {
-                Screen::Command => cmd.kmj = KaoMoJi::Happy,
-                _ => cmd.kmj = KaoMoJi::Smile,
-            }
+            cmd.kmj = match app.current_screen {
+                Screen::Command => match cmd.status {
+                    CmdStatus::Success=> KaoMoJi::Wink,
+                    CmdStatus::Failed => KaoMoJi::Angry,
+                    _ => KaoMoJi::Happy,
+                },
+                _ => KaoMoJi::Smile,
+            };
             let kaomoji_block = Block::default()
                 .borders(Borders::TOP | Borders::LEFT | Borders::BOTTOM)
                 .border_style(Style::default().fg(command_line_border_color))

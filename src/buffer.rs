@@ -347,6 +347,19 @@ impl Buffer {
             *px = get_line_len(&self.content[*py]);
         }
     }
+
+    pub fn revoke(&mut self) {
+        self.history_ptr = if self.history_ptr <= 0 {0} else {self.history_ptr - 1}; 
+        self.content = arc_vec_to_string(self.history[self.history_ptr].clone());
+    }
+
+    pub fn mv_cursor_tail(&mut self) {
+        self.cursor_pos.0 = get_line_len(&self.content[self.cursor_pos.1]);
+    }
+
+    pub fn mv_cursor_head(&mut self) {
+        self.cursor_pos.0 = 0;
+    }
 }
 
 pub struct BufferManager {

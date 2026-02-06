@@ -28,6 +28,7 @@ use cli::Args;
 mod utils;
 
 mod command;
+use command::*;
 
 fn main() -> Result<()> {
     // setup terminal
@@ -116,6 +117,18 @@ where
                                 let _ = cur_buf.save_to("new_file.txt");
                             }
                         }
+                        // revoke
+                        (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
+                            cur_buf.revoke();
+                        }
+                        // revoke
+                        (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
+                            cur_buf.mv_cursor_head();
+                        }
+                        // revoke
+                        (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
+                            cur_buf.mv_cursor_tail();
+                        }
                         // active the command line
                         (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                             app.current_screen = Screen::Command;
@@ -154,6 +167,7 @@ where
                             app.current_screen = Screen::Editor
                         }
                         (KeyModifiers::NONE, KeyCode::Char(ch)) => {
+                            cur_cmd.status = CmdStatus::Normal;
                             if let Ok(_) = cur_cmd.add_content_at(ch.to_string().as_str()) {
                                 cur_cmd.mv_cursor_right();
                             }

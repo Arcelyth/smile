@@ -14,6 +14,14 @@ pub enum KaoMoJi {
     Wink,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum CmdStatus{
+    Normal, 
+    Success,
+    Failed,
+}
+
+
 // KaoCo is the name of the command bar in smile
 pub struct KaoCo {
     // kaomoji of KaoCo
@@ -21,6 +29,7 @@ pub struct KaoCo {
     pub content: String,
     pub cursor_pos: (usize, usize),
     pub scroll_offset: (usize, usize),
+    pub status: CmdStatus,
 }
 
 impl KaoCo {
@@ -30,6 +39,7 @@ impl KaoCo {
             content: String::new(),
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
+            status: CmdStatus::Normal,
         }
     }
 
@@ -131,15 +141,20 @@ impl KaoCo {
     pub fn handle_command(&mut self, buf: &mut Buffer) -> Result<(), BufferError>{
         match self.content.trim() {
             "revoke" => {
-                buf.history_ptr = if buf.history_ptr <= 0 {0} else {buf.history_ptr - 1}; 
-                buf.content = arc_vec_to_string(buf.history[buf.history_ptr].clone());
+                buf.revoke();
+            }
+            "head" => {
+                buf.mv_cursor_head();
+            }
+            "tail" => {
+                buf.mv_cursor_tail();
             }
             "save" => {
                 buf.save()?;
             }
             _ => {}
         };  
-        self.kmj = KaoMoJi::Wink;
+        self.status = CmdStatus::Success;
         Ok(())
     }
 }
