@@ -3,6 +3,7 @@ use unicode_width::UnicodeWidthStr;
 use unicode_segmentation::UnicodeSegmentation;
 use std::fs;
 use color_eyre::Result;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum FileFormat {
@@ -55,4 +56,6 @@ pub fn get_format_text(f: FileFormat) -> &'static str {
     }
 }
 
-
+pub fn arc_vec_to_string(v: Vec<Arc<str>>) -> Vec<String> {
+    v.into_iter().map(|s| s.to_string()).collect()
+}

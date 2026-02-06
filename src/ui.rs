@@ -83,6 +83,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 return;
             };
         
+            buf.check_cursor_pos();
             buf.update_scroll(viewport_height, viewport_width);
             // editor's color
             let border_color_active = Color::Rgb(181, 235, 181);
@@ -114,8 +115,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
             frame.render_widget(line_num_text, editor_main[0]);
 
+            let save_text = if buf.saved {""} else {"[+] "};
             let editor_block = Block::default()
-                .title(buf.name.as_ref())
+                .title(format!(" {} {}", buf.name.as_ref(), save_text))
                 .borders(Borders::RIGHT | Borders::TOP)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().fg(font_color));
@@ -195,7 +197,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             let status_last_block = Block::default()
                 .borders(Borders::BOTTOM )
                 .border_style(Style::default().fg(border_color))
-                .style(Style::default().fg(status_last_font_color));
+                .style(Style::default().fg(status_forth_font_color));
             let status_last = Paragraph::new(buf_fmt)
                 .alignment(Alignment::Center)
                 .block(status_last_block);

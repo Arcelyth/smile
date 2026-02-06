@@ -3,6 +3,7 @@ use unicode_width::UnicodeWidthStr;
 use unicode_segmentation::UnicodeSegmentation;
 use crate::error::BufferError;
 use crate::utils::*;
+use crate::buffer::Buffer;
 
 #[derive(Debug, Copy, Clone)]
 pub enum KaoMoJi {
@@ -127,8 +128,19 @@ impl KaoCo {
     }
 
 
-    pub fn handle_command(&mut self) {
-         
+    pub fn handle_command(&mut self, buf: &mut Buffer) -> Result<(), BufferError>{
+        match self.content.trim() {
+            "revoke" => {
+                buf.history_ptr = if buf.history_ptr <= 0 {0} else {buf.history_ptr - 1}; 
+                buf.content = arc_vec_to_string(buf.history[buf.history_ptr].clone());
+            }
+            "save" => {
+                buf.save()?;
+            }
+            _ => {}
+        };  
+        self.kmj = KaoMoJi::Wink;
+        Ok(())
     }
 }
 

@@ -140,6 +140,12 @@ where
                     }
                 }
                 Screen::Command => {
+                    let cur_buf = if let Some(b) = app.buf_manager.get_current_buffer_mut() {
+                        b
+                    } else {
+                        return Ok(());
+                    };
+
                     let cur_cmd = &mut app.command;
                     match (key.modifiers, key.code) {
                         // exit
@@ -155,7 +161,7 @@ where
                         (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            cur_cmd.handle_command();
+                            cur_cmd.handle_command(cur_buf);
                             cur_cmd.clean();
                         }
                         (KeyModifiers::NONE, KeyCode::Backspace) => {

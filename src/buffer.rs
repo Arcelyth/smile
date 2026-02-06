@@ -11,36 +11,49 @@ use crate::error::*;
 
 pub struct Buffer {
     pub content: Vec<String>,
+    pub history: Vec<Vec<Arc<str>>>,
+    pub history_ptr: usize, 
     pub name: Arc<str>,
     pub path: Option<PathBuf>,
     pub cursor_pos: (usize, usize),
     pub scroll_offset: (usize, usize),
     pub scroll_thres: (usize, usize),
     pub file_info: Option<FileInfo>,
+    pub saved: bool,
 }
 
 impl Buffer {
     pub fn new(name: &str) -> Self {
         Self {
             content: vec![String::new()],
+            history: vec![vec![String::new().into()]],
+            history_ptr: 0,
             name: Arc::from(name), 
             path: None,
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
             file_info: Some(FileInfo::new()),
+            saved: true,
         }
     }
     pub fn from_content(content: &str, name: & str) -> Self {
         let c: Vec<String> = content.split('\n').map(String::from).collect();
+        let v: Vec<Arc<str>> = c.clone()
+            .into_iter()
+            .map(|s| Arc::<str>::from(s))
+            .collect();
         Self {
             content: c,
+            history: vec![v],
+            history_ptr: 0,
             name: Arc::from(name),
             path: None,
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
             file_info: Some(FileInfo::new()),
+            saved: true,
         }
     } 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, BufferError> {
@@ -49,12 +62,16 @@ impl Buffer {
             return Err(BufferError::NotAFile);
         }
         let content_str = read_to_string(path_ref)?;
-        
+
         let mut content: Vec<String> = content_str
             .lines()
             .map(|s| s.to_string())
             .collect();
-        
+         let v: Vec<Arc<str>> = content.clone()
+            .into_iter()
+            .map(|s| Arc::<str>::from(s))
+            .collect();
+       
         if content.is_empty() {
             content.push(String::new());
         }
@@ -65,13 +82,16 @@ impl Buffer {
             .unwrap_or("Untitled");
 
         let mut s = Self {
-            content,
+            content: content.clone(),
+            history: vec![v],
+            history_ptr: 0,
             name: Arc::from(name),
             path: Some(path_ref.to_path_buf()),
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
             file_info: None,
+            saved: true,
         };
         s.refresh_file_info().unwrap();
         Ok(s)
@@ -93,6 +113,7 @@ impl Buffer {
         let end_byte = char_to_byte_idx(line, x + len_in_chars);
         
         line.drain(start_byte..end_byte);
+        self.handle_change();
         Ok(())
     }
 
@@ -105,6 +126,7 @@ impl Buffer {
         let end_byte = char_to_byte_idx(line, x + len_in_chars);
         
         line.replace_range(start_byte..end_byte, replace_str);
+        self.handle_change();
         Ok(())
     }
 
@@ -114,6 +136,7 @@ impl Buffer {
         
         let byte_idx = char_to_byte_idx(&self.content[y], x);
         self.content[y].insert_str(byte_idx, add_str);
+        self.handle_change();
         Ok(())
     }
 
@@ -123,6 +146,7 @@ impl Buffer {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
+        self.handle_change();
         Ok(self.content.remove(y)) 
     }
 
@@ -132,6 +156,7 @@ impl Buffer {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
+        self.handle_change();
         Ok(self.content.insert(y, String::new()))   
     }
 
@@ -163,6 +188,7 @@ impl Buffer {
         if let Err(e) = self.refresh_file_info() {
             println!("error: {:?}", e);
         };
+        self.saved = true;
         Ok(())
     }
 
@@ -203,6 +229,7 @@ impl Buffer {
             self.content.push(String::new());
             self.cursor_pos.1 += 1;
             self.cursor_pos.0 = 0;
+            self.handle_change();
         }
     }
 
@@ -222,6 +249,7 @@ impl Buffer {
             self.cursor_pos.1 -= 1;
             self.cursor_pos.0 = prev_char_len;
         }
+        self.handle_change();
     }
 
     pub fn handle_enter(&mut self) {
@@ -233,6 +261,19 @@ impl Buffer {
         
         self.cursor_pos.1 += 1;
         self.cursor_pos.0 = 0;
+        self.handle_change();
+    }
+    
+    // change saved to false and add new content to history
+    pub fn handle_change(&mut self) {
+        self.saved = false;
+        self.history.truncate(self.history_ptr + 1);
+        let v: Vec<Arc<str>> = self.content.clone()
+            .into_iter()
+            .map(|s| Arc::<str>::from(s))
+            .collect();
+        self.history.push(v);
+        self.history_ptr += 1;
     }
 
     pub fn update_scroll(&mut self, viewport_height: usize, viewport_width: usize) {
@@ -296,9 +337,16 @@ impl Buffer {
         self.file_info = Some(info);
         Ok(())
     }
-    
-    
 
+    pub fn check_cursor_pos(&mut self) {
+        let (px, py) = &mut self.cursor_pos;
+        if *py >= self.content.len() {
+            *py = self.content.len() - 1; 
+        }
+        if *px > get_line_len(&self.content[*py]) {
+            *px = get_line_len(&self.content[*py]);
+        }
+    }
 }
 
 pub struct BufferManager {
