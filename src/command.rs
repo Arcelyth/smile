@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use unicode_width::UnicodeWidthStr;
 use unicode_segmentation::UnicodeSegmentation;
+use std::sync::Arc;
 use crate::error::BufferError;
 use crate::utils::*;
 use crate::buffer::Buffer;
@@ -15,8 +16,14 @@ pub enum KaoMoJi {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub enum ExCmd {
+    AskAndSave
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum CmdStatus{
     Normal, 
+    Exec(ExCmd),
     Success,
     Failed,
 }
@@ -26,6 +33,7 @@ pub enum CmdStatus{
 pub struct KaoCo {
     // kaomoji of KaoCo
     pub kmj: KaoMoJi,
+    pub say: Arc<str>,
     pub content: String,
     pub cursor_pos: (usize, usize),
     pub scroll_offset: (usize, usize),
@@ -36,6 +44,7 @@ impl KaoCo {
     pub fn new() -> Self {
         Self {
             kmj: KaoMoJi::Smile,
+            say: Arc::from(""),
             content: String::new(),
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
@@ -138,24 +147,56 @@ impl KaoCo {
     }
 
 
-    pub fn handle_command(&mut self, buf: &mut Buffer) -> Result<(), BufferError>{
-        match self.content.trim() {
-            "revoke" => {
-                buf.revoke();
+    pub fn handle_command(&mut self, buf: &mut Buffer) -> Result<bool, BufferError>{
+        match self.status {
+            CmdStatus::Exec(cmd) => match cmd {
+                ExCmd::AskAndSave => {
+                    buf.change_name(&self.content.trim());
+                    println!("{}", buf.name);
+                    buf.save()?;
+                    self.say = "".into();
+                }
             }
-            "head" => {
-                buf.mv_cursor_head();
+            _ => {
+                match self.content.trim() {
+                    "" => {
+                        return Ok(false);
+                    }
+                    "revoke" => {
+                        buf.revoke();
+                    }
+                    "head" => {
+                        buf.mv_cursor_head();
+                    }
+                    "tail" => {
+                        buf.mv_cursor_tail();
+                    }
+                    "save" => {
+                        if buf.path.is_some() {
+                            let _ = buf.save();
+                        } else {
+                            let _ = self.ask_and_save();
+                        }
+                        return Ok(false);
+                    }
+                    "change name" => {
+                        buf.change_name("omg");
+                    }
+                    _ => {
+                        self.say = "Unknown command".into();
+                        self.status = CmdStatus::Failed;
+                        return Ok(false);
+                    }
+                }  
             }
-            "tail" => {
-                buf.mv_cursor_tail();
-            }
-            "save" => {
-                buf.save()?;
-            }
-            _ => {}
-        };  
+        }
         self.status = CmdStatus::Success;
-        Ok(())
+        Ok(true)
+    }
+
+    pub fn ask_and_save(&mut self) {
+        self.status = CmdStatus::Exec(ExCmd::AskAndSave);
+        self.say = "Input the file's name".into();
     }
 }
 

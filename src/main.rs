@@ -82,6 +82,7 @@ where
     loop {
         terminal.draw(|f| ui(f, app))?;
 
+        let cur_cmd = &mut app.command;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
@@ -114,7 +115,8 @@ where
                             if cur_buf.path.is_some() {
                                 let _ = cur_buf.save();
                             } else {
-                                let _ = cur_buf.save_to("new_file.txt");
+                                app.current_screen = Screen::Command;
+                                let _ = cur_cmd.ask_and_save();
                             }
                         }
                         // revoke
@@ -159,7 +161,6 @@ where
                         return Ok(());
                     };
 
-                    let cur_cmd = &mut app.command;
                     match (key.modifiers, key.code) {
                         // exit
                         (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
@@ -167,7 +168,10 @@ where
                             app.current_screen = Screen::Editor
                         }
                         (KeyModifiers::NONE, KeyCode::Char(ch)) => {
-                            cur_cmd.status = CmdStatus::Normal;
+                            if !matches!(cur_cmd.status, CmdStatus::Exec(_)) {
+                                cur_cmd.status = CmdStatus::Normal;
+                            }
+
                             if let Ok(_) = cur_cmd.add_content_at(ch.to_string().as_str()) {
                                 cur_cmd.mv_cursor_right();
                             }
@@ -175,7 +179,10 @@ where
                         (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            cur_cmd.handle_command(cur_buf);
+                            let ret = cur_cmd.handle_command(cur_buf).unwrap();
+                            if ret {
+                                app.current_screen = Screen::Editor
+                            }
                             cur_cmd.clean();
                         }
                         (KeyModifiers::NONE, KeyCode::Backspace) => {

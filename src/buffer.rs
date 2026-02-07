@@ -97,7 +97,8 @@ impl Buffer {
         Ok(s)
     }
     pub fn change_name(&mut self, name: &str) {
-        self.name = Arc::from(name)
+        self.name = Arc::from(name);
+        self.path = Some(format!("./{}", name).into());
     }
 
     pub fn get_line_count(&self) -> usize {

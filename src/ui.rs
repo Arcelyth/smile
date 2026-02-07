@@ -204,8 +204,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
             frame.render_widget(status_last, status_bar_main[3]);
 
-
-
             // show the last position of status bar
             let status_last_block = Block::default()
                 .borders(Borders::BOTTOM | Borders::RIGHT)
@@ -273,7 +271,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                 .border_style(Style::default().fg(command_line_border_color))
                 .style(Style::default().fg(command_line_text_color));
 
-            let command_line = Paragraph::new(format!(": {}", cmd.content)).
+            let command_line = Paragraph::new(format!("{}: {}", cmd.say, cmd.content)).
                 scroll((cmd.scroll_offset.1 as u16, 0))
                 .block(command_line_block);
 
@@ -294,7 +292,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
                     let command_line_area = command_line_frame[1];
                     let vx = cmd.get_visual_width_upto(cmd.cursor_pos.0);
                     let cursor_x =
-                        command_line_area.x + (vx.saturating_sub(cmd.scroll_offset.0)) as u16 + 2;
+                        command_line_area.x + get_line_len(&cmd.say.to_string()) as u16 + (vx.saturating_sub(cmd.scroll_offset.0)) as u16 + 2;
                     let cursor_y =
                         command_line_area.y + (cmd.cursor_pos.1.saturating_sub(cmd.scroll_offset.1)) as u16 + 1;
                     if cursor_x < command_line_area.right() && cursor_y < command_line_area.bottom() {
