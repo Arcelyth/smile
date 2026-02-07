@@ -1,18 +1,18 @@
 #![allow(dead_code)]
-use unicode_width::UnicodeWidthStr;
-use unicode_segmentation::UnicodeSegmentation;
-use std::sync::Arc;
-use std::path::{Path, PathBuf};
+use crate::error::*;
+use crate::utils::*;
+use color_eyre::Result;
 use std::fs::{self, File, read_to_string};
 use std::io::{self, Write};
-use color_eyre::Result;
-use crate::utils::*;
-use crate::error::*;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 pub struct Buffer {
     pub content: Vec<String>,
     pub history: Vec<Vec<Arc<str>>>,
-    pub history_ptr: usize, 
+    pub history_ptr: usize,
     pub name: Arc<str>,
     pub path: Option<PathBuf>,
     pub cursor_pos: (usize, usize),
@@ -28,7 +28,7 @@ impl Buffer {
             content: vec![String::new()],
             history: vec![vec![String::new().into()]],
             history_ptr: 0,
-            name: Arc::from(name), 
+            name: Arc::from(name),
             path: None,
             cursor_pos: (0, 0),
             scroll_offset: (0, 0),
@@ -37,12 +37,9 @@ impl Buffer {
             saved: true,
         }
     }
-    pub fn from_content(content: &str, name: & str) -> Self {
+    pub fn from_content(content: &str, name: &str) -> Self {
         let c: Vec<String> = content.split('\n').map(String::from).collect();
-        let v: Vec<Arc<str>> = c.clone()
-            .into_iter()
-            .map(|s| Arc::<str>::from(s))
-            .collect();
+        let v: Vec<Arc<str>> = c.clone().into_iter().map(|s| Arc::<str>::from(s)).collect();
         Self {
             content: c,
             history: vec![v],
@@ -55,7 +52,7 @@ impl Buffer {
             file_info: Some(FileInfo::new()),
             saved: true,
         }
-    } 
+    }
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, BufferError> {
         let path_ref = path.as_ref();
         if !path_ref.is_file() {
@@ -63,15 +60,13 @@ impl Buffer {
         }
         let content_str = read_to_string(path_ref)?;
 
-        let mut content: Vec<String> = content_str
-            .lines()
-            .map(|s| s.to_string())
-            .collect();
-         let v: Vec<Arc<str>> = content.clone()
+        let mut content: Vec<String> = content_str.lines().map(|s| s.to_string()).collect();
+        let v: Vec<Arc<str>> = content
+            .clone()
             .into_iter()
             .map(|s| Arc::<str>::from(s))
             .collect();
-       
+
         if content.is_empty() {
             content.push(String::new());
         }
@@ -102,30 +97,38 @@ impl Buffer {
     }
 
     pub fn get_line_count(&self) -> usize {
-        self.content.len()        
+        self.content.len()
     }
 
     pub fn delete_content_at(&mut self, len_in_chars: usize) -> Result<(), BufferError> {
         let (x, y) = self.cursor_pos;
-        if y >= self.content.len() { return Err(BufferError::InvalidPosition); }
-        
+        if y >= self.content.len() {
+            return Err(BufferError::InvalidPosition);
+        }
+
         let line = &mut self.content[y];
         let start_byte = char_to_byte_idx(line, x);
         let end_byte = char_to_byte_idx(line, x + len_in_chars);
-        
+
         line.drain(start_byte..end_byte);
         self.handle_change();
         Ok(())
     }
 
-    pub fn change_content_at(&mut self, len_in_chars: usize, replace_str: &str) -> Result<(), BufferError> {
+    pub fn change_content_at(
+        &mut self,
+        len_in_chars: usize,
+        replace_str: &str,
+    ) -> Result<(), BufferError> {
         let (x, y) = self.cursor_pos;
-        if y >= self.content.len() { return Err(BufferError::InvalidPosition); }
-        
+        if y >= self.content.len() {
+            return Err(BufferError::InvalidPosition);
+        }
+
         let line = &mut self.content[y];
         let start_byte = char_to_byte_idx(line, x);
         let end_byte = char_to_byte_idx(line, x + len_in_chars);
-        
+
         line.replace_range(start_byte..end_byte, replace_str);
         self.handle_change();
         Ok(())
@@ -133,8 +136,10 @@ impl Buffer {
 
     pub fn add_content_at(&mut self, add_str: &str) -> Result<(), BufferError> {
         let (x, y) = self.cursor_pos;
-        if y >= self.content.len() { return Err(BufferError::InvalidPosition); }
-        
+        if y >= self.content.len() {
+            return Err(BufferError::InvalidPosition);
+        }
+
         let byte_idx = char_to_byte_idx(&self.content[y], x);
         self.content[y].insert_str(byte_idx, add_str);
         self.handle_change();
@@ -148,7 +153,7 @@ impl Buffer {
             return Err(BufferError::InvalidPosition);
         }
         self.handle_change();
-        Ok(self.content.remove(y)) 
+        Ok(self.content.remove(y))
     }
 
     pub fn add_new_line(&mut self) -> Result<(), BufferError> {
@@ -158,21 +163,24 @@ impl Buffer {
             return Err(BufferError::InvalidPosition);
         }
         self.handle_change();
-        Ok(self.content.insert(y, String::new()))   
+        Ok(self.content.insert(y, String::new()))
     }
 
     pub fn save(&mut self) -> io::Result<()> {
         if let Some(ref path) = self.path {
             self.save_to(path.clone())
         } else {
-            Err(io::Error::new(io::ErrorKind::NotFound, "No file path bound to this buffer"))
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No file path bound to this buffer",
+            ))
         }
     }
 
     pub fn save_to<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let path_ref = path.as_ref();
-        let mut file = File::create(path_ref)?; 
-        
+        let mut file = File::create(path_ref)?;
+
         for (i, line) in self.content.iter().enumerate() {
             file.write_all(line.as_bytes())?;
             if i < self.content.len() - 1 {
@@ -218,14 +226,20 @@ impl Buffer {
     pub fn mv_cursor_up(&mut self) {
         if self.cursor_pos.1 > 0 {
             self.cursor_pos.1 -= 1;
-            self.cursor_pos.0 = self.cursor_pos.0.min(get_line_len(&self.content[self.cursor_pos.1]));
+            self.cursor_pos.0 = self
+                .cursor_pos
+                .0
+                .min(get_line_len(&self.content[self.cursor_pos.1]));
         }
     }
 
     pub fn mv_cursor_down(&mut self) {
         if self.cursor_pos.1 < self.content.len() - 1 {
             self.cursor_pos.1 += 1;
-            self.cursor_pos.0 = self.cursor_pos.0.min(get_line_len(&self.content[self.cursor_pos.1]));
+            self.cursor_pos.0 = self
+                .cursor_pos
+                .0
+                .min(get_line_len(&self.content[self.cursor_pos.1]));
         } else {
             self.content.push(String::new());
             self.cursor_pos.1 += 1;
@@ -245,7 +259,7 @@ impl Buffer {
             let current_line = self.content.remove(y);
             let prev_line = &mut self.content[y - 1];
             let prev_char_len = get_line_len(prev_line);
-            
+
             prev_line.push_str(&current_line);
             self.cursor_pos.1 -= 1;
             self.cursor_pos.0 = prev_char_len;
@@ -256,20 +270,22 @@ impl Buffer {
     pub fn handle_enter(&mut self) {
         let (x, y) = self.cursor_pos;
         let byte_idx = char_to_byte_idx(&self.content[y], x);
-        
+
         let next_line_content = self.content[y].split_off(byte_idx);
         self.content.insert(y + 1, next_line_content);
-        
+
         self.cursor_pos.1 += 1;
         self.cursor_pos.0 = 0;
         self.handle_change();
     }
-    
+
     // change saved to false and add new content to history
     pub fn handle_change(&mut self) {
         self.saved = false;
         self.history.truncate(self.history_ptr + 1);
-        let v: Vec<Arc<str>> = self.content.clone()
+        let v: Vec<Arc<str>> = self
+            .content
+            .clone()
             .into_iter()
             .map(|s| Arc::<str>::from(s))
             .collect();
@@ -308,10 +324,7 @@ impl Buffer {
 
     pub fn get_visual_width_upto(&self, line_idx: usize, char_idx: usize) -> usize {
         let line = &self.content[line_idx];
-        line.graphemes(true)
-            .take(char_idx)
-            .map(|g| g.width())
-            .sum()
+        line.graphemes(true).take(char_idx).map(|g| g.width()).sum()
     }
 
     pub fn get_line_visual_width(&self, line_idx: usize) -> usize {
@@ -330,11 +343,11 @@ impl Buffer {
         let metadata = fs::metadata(path_str)?;
 
         let info = FileInfo {
-            size: metadata.len(), 
+            size: metadata.len(),
             read_only: metadata.permissions().readonly(),
-            format: detect_line_ending(&self.content.join(""))
+            format: detect_line_ending(&self.content.join("")),
         };
-       
+
         self.file_info = Some(info);
         Ok(())
     }
@@ -342,7 +355,7 @@ impl Buffer {
     pub fn check_cursor_pos(&mut self) {
         let (px, py) = &mut self.cursor_pos;
         if *py >= self.content.len() {
-            *py = self.content.len() - 1; 
+            *py = self.content.len() - 1;
         }
         if *px > get_line_len(&self.content[*py]) {
             *px = get_line_len(&self.content[*py]);
@@ -350,7 +363,11 @@ impl Buffer {
     }
 
     pub fn revoke(&mut self) {
-        self.history_ptr = if self.history_ptr <= 0 {0} else {self.history_ptr - 1}; 
+        self.history_ptr = if self.history_ptr <= 0 {
+            0
+        } else {
+            self.history_ptr - 1
+        };
         self.content = arc_vec_to_string(self.history[self.history_ptr].clone());
     }
 
@@ -396,7 +413,7 @@ impl BufferManager {
         }
         None
     }
-    
+
     pub fn get_current_buffer_mut(&mut self) -> Option<&mut Buffer> {
         if let Some(cur) = self.current_buffer {
             if cur >= self.buffers.len() {
@@ -410,20 +427,28 @@ impl BufferManager {
     pub fn change_to_prev(&mut self) {
         if let Some(cur) = self.current_buffer {
             let len = self.buffers.len();
-            if len == 0 || len == 1 { return; }
-            if cur == 0 { self.current_buffer = Some(len - 1); }
-            self.current_buffer = Some(cur - 1);
+            if len == 0 || len == 1 {
+                return;
+            }
+            if cur == 0 {
+                self.current_buffer = Some(len - 1);
+            } else {
+                self.current_buffer = Some(cur - 1);
+            }
         }
     }
 
     pub fn change_to_next(&mut self) {
         if let Some(cur) = self.current_buffer {
             let len = self.buffers.len();
-            if len == 0 || len == 1 { return; }
-            if cur == len - 1 { self.current_buffer = Some(0); }
-            self.current_buffer = Some(cur + 1);
+            if len == 0 || len == 1 {
+                return;
+            }
+            if cur == len - 1 {
+                self.current_buffer = Some(0);
+            } else {
+                self.current_buffer = Some(cur + 1);
+            }
         }
     }
 }
-
-

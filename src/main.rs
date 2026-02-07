@@ -155,16 +155,11 @@ where
                     }
                 }
                 Screen::Command => {
-                    let cur_buf = if let Some(b) = app.buf_manager.get_current_buffer_mut() {
-                        b
-                    } else {
-                        return Ok(());
-                    };
 
                     match (key.modifiers, key.code) {
                         // exit
                         (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
-                            cur_cmd.clean();
+                            cur_cmd.clean_all();
                             app.current_screen = Screen::Editor
                         }
                         (KeyModifiers::NONE, KeyCode::Char(ch)) => {
@@ -179,7 +174,7 @@ where
                         (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            let ret = cur_cmd.handle_command(cur_buf).unwrap();
+                            let ret = cur_cmd.handle_command(&mut app.buf_manager).unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor
                             }

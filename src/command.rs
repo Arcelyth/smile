@@ -1,10 +1,10 @@
 #![allow(dead_code)]
-use unicode_width::UnicodeWidthStr;
-use unicode_segmentation::UnicodeSegmentation;
-use std::sync::Arc;
+use crate::buffer::{Buffer, BufferManager};
 use crate::error::BufferError;
 use crate::utils::*;
-use crate::buffer::Buffer;
+use std::sync::Arc;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Copy, Clone)]
 pub enum KaoMoJi {
@@ -17,17 +17,16 @@ pub enum KaoMoJi {
 
 #[derive(Debug, Copy, Clone)]
 pub enum ExCmd {
-    AskAndSave
+    AskAndSave,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum CmdStatus{
-    Normal, 
+pub enum CmdStatus {
+    Normal,
     Exec(ExCmd),
     Success,
     Failed,
 }
-
 
 // KaoCo is the name of the command bar in smile
 pub struct KaoCo {
@@ -58,9 +57,16 @@ impl KaoCo {
         self.scroll_offset = (0, 0);
     }
 
+    pub fn clean_all(&mut self) {
+        self.content = String::new();
+        self.say = "".into();
+        self.cursor_pos = (0, 0);
+        self.scroll_offset = (0, 0);
+    }
+
     pub fn change_content_at(&mut self, len: usize, replace_str: &str) -> Result<(), BufferError> {
         let x = self.cursor_pos.0;
-        if x + len > self.content.len()  {
+        if x + len > self.content.len() {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
@@ -68,20 +74,21 @@ impl KaoCo {
         let start_byte = char_to_byte_idx(line, x);
         let end_byte = char_to_byte_idx(line, x + len);
 
-        self.content.replace_range(start_byte..end_byte, replace_str);
+        self.content
+            .replace_range(start_byte..end_byte, replace_str);
         Ok(())
     }
 
     pub fn delete_content_at(&mut self, len: usize) -> Result<(), BufferError> {
         let x = self.cursor_pos.0;
-        if x + len > self.content.len()  {
+        if x + len > self.content.len() {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
         let line = &mut self.content;
         let start_byte = char_to_byte_idx(line, x);
         let end_byte = char_to_byte_idx(line, x + len);
-        
+
         self.content.drain(start_byte..end_byte);
 
         Ok(())
@@ -89,7 +96,7 @@ impl KaoCo {
 
     pub fn add_content_at(&mut self, add_str: &str) -> Result<(), BufferError> {
         let x = self.cursor_pos.0;
-        if x > get_line_len(&self.content)  {
+        if x > get_line_len(&self.content) {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
@@ -105,13 +112,13 @@ impl KaoCo {
 
         if cur_pos.0 < char_count {
             cur_pos.0 += 1;
-        } 
+        }
     }
 
     pub fn mv_cursor_left(&mut self) {
         if self.cursor_pos.0 > 0 {
             self.cursor_pos.0 -= 1;
-        } 
+        }
     }
 
     pub fn handle_backspace(&mut self) {
@@ -121,12 +128,12 @@ impl KaoCo {
             let byte_idx = char_to_byte_idx(line, x - 1);
             line.remove(byte_idx);
             self.cursor_pos.0 -= 1;
-        } 
+        }
     }
-   
+
     pub fn update_scroll(&mut self, viewport_width: usize) {
-        let thres = 0; 
-        
+        let thres = 0;
+
         let visual_x = get_line_len(&self.content);
 
         if visual_x >= (self.scroll_offset.0 + viewport_width).saturating_sub(thres) {
@@ -140,14 +147,16 @@ impl KaoCo {
 
     pub fn get_visual_width_upto(&self, char_idx: usize) -> usize {
         let line = &self.content;
-        line.graphemes(true)
-            .take(char_idx)
-            .map(|g| g.width())
-            .sum()
+        line.graphemes(true).take(char_idx).map(|g| g.width()).sum()
     }
 
+    pub fn handle_command(&mut self, buf_m: &mut BufferManager) -> Result<bool, BufferError> {
+        let buf = if let Some(b) = buf_m.get_current_buffer_mut() {
+            b
+        } else {
+            return Ok(false);
+        };
 
-    pub fn handle_command(&mut self, buf: &mut Buffer) -> Result<bool, BufferError>{
         match self.status {
             CmdStatus::Exec(cmd) => match cmd {
                 ExCmd::AskAndSave => {
@@ -156,39 +165,46 @@ impl KaoCo {
                     buf.save()?;
                     self.say = "".into();
                 }
-            }
-            _ => {
-                match self.content.trim() {
-                    "" => {
-                        return Ok(false);
+            },
+            _ => match self.content.trim() {
+                "" => {
+                    return Ok(false);
+                }
+                "revoke" => {
+                    buf.revoke();
+                }
+                "head" => {
+                    buf.mv_cursor_head();
+                }
+                "tail" => {
+                    buf.mv_cursor_tail();
+                }
+                "save" => {
+                    if buf.path.is_some() {
+                        let _ = buf.save();
+                    } else {
+                        let _ = self.ask_and_save();
                     }
-                    "revoke" => {
-                        buf.revoke();
-                    }
-                    "head" => {
-                        buf.mv_cursor_head();
-                    }
-                    "tail" => {
-                        buf.mv_cursor_tail();
-                    }
-                    "save" => {
-                        if buf.path.is_some() {
-                            let _ = buf.save();
-                        } else {
-                            let _ = self.ask_and_save();
-                        }
-                        return Ok(false);
-                    }
-                    "change name" => {
-                        buf.change_name("omg");
-                    }
-                    _ => {
-                        self.say = "Unknown command".into();
-                        self.status = CmdStatus::Failed;
-                        return Ok(false);
-                    }
-                }  
-            }
+                    return Ok(false);
+                }
+                "change name" => {
+                    buf.change_name("omg");
+                }
+                "new buffer" => {
+                    buf_m.add_new_buffer("Untitled");
+                }
+                "prev buffer" => {
+                    buf_m.change_to_prev();
+                }
+                "next buffer" => {
+                    buf_m.change_to_next();
+                }
+                _ => {
+                    self.say = "Unknown command".into();
+                    self.status = CmdStatus::Failed;
+                    return Ok(false);
+                }
+            },
         }
         self.status = CmdStatus::Success;
         Ok(true)
@@ -206,8 +222,7 @@ pub fn kaomoji_to_text(kind: KaoMoJi) -> String {
         KaoMoJi::Angry => "(`ᴖ´)",
         KaoMoJi::Sleep => "(ᴗ˳ᴗ)ᶻ𝗓𐰁",
         KaoMoJi::Happy => "(>ᴗ<)",
-        _ => "(•ᴗ•)"
-    }.to_string()
-} 
-
-
+        _ => "(•ᴗ•)",
+    }
+    .to_string()
+}
