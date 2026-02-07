@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use crate::buffer::{Buffer, BufferManager};
-use crate::error::BufferError;
+use crate::error::*;
+use crate::layout::layout_manager::*;
+use crate::layout::tree::*;
 use crate::utils::*;
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
@@ -150,13 +152,12 @@ impl KaoCo {
         line.graphemes(true).take(char_idx).map(|g| g.width()).sum()
     }
 
-    pub fn handle_command(&mut self, buf_m: &mut BufferManager) -> Result<bool, BufferError> {
-        let buf = if let Some(b) = buf_m.get_current_buffer_mut() {
-            b
-        } else {
-            return Ok(false);
-        };
-
+    pub fn handle_command(
+        &mut self,
+        buf_m: &mut BufferManager,
+        lm: &mut LayoutManager,
+    ) -> Result<bool, LayoutError> {
+        let buf = lm.get_current_buffer_mut(buf_m)?;
         match self.status {
             CmdStatus::Exec(cmd) => match cmd {
                 ExCmd::AskAndSave => {
@@ -174,10 +175,10 @@ impl KaoCo {
                     buf.revoke();
                 }
                 "head" => {
-                    buf.mv_cursor_head();
+                    mv_cursor_head(lm);
                 }
                 "tail" => {
-                    buf.mv_cursor_tail();
+                    mv_cursor_tail(buf_m, lm);
                 }
                 "save" => {
                     if buf.path.is_some() {
@@ -192,12 +193,6 @@ impl KaoCo {
                 }
                 "new buffer" => {
                     buf_m.add_new_buffer("Untitled");
-                }
-                "prev buffer" => {
-                    buf_m.change_to_prev();
-                }
-                "next buffer" => {
-                    buf_m.change_to_next();
                 }
                 _ => {
                     self.say = "Unknown command".into();
@@ -214,6 +209,115 @@ impl KaoCo {
         self.status = CmdStatus::Exec(ExCmd::AskAndSave);
         self.say = "Input the file's name".into();
     }
+}
+
+pub fn create_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager, name: &str) {
+    let id = bm.add_new_buffer(name);
+    lm.change_current_buffer_id(id);
+}
+
+pub fn mv_cursor_right(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.mv_cursor_right(bm);
+}
+
+pub fn mv_cursor_left(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.mv_cursor_left(bm);
+}
+
+pub fn mv_cursor_up(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.mv_cursor_up(bm);
+}
+
+pub fn mv_cursor_down(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.mv_cursor_down(bm);
+}
+
+pub fn mv_cursor_head(lm: &mut LayoutManager) {
+    lm.mv_cursor_head();
+}
+
+pub fn mv_cursor_tail(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.mv_cursor_tail(bm);
+}
+
+pub fn handle_backspace(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.handle_backspace(bm);
+}
+
+pub fn handle_enter(bm: &mut BufferManager, lm: &mut LayoutManager) {
+    lm.handle_enter(bm);
+}
+
+pub fn add_content_at(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+    add_str: &str,
+) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let (cursor_pos, buffer_id) = match pane {
+        LayoutNode::Pane {
+            cursor_pos,
+            buffer_id,
+            ..
+        } => (cursor_pos, *buffer_id),
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    let buf = bm.get_buffer_mut(buffer_id)?;
+    buf.add_content_at(add_str, *cursor_pos);
+    Ok(())
+}
+
+pub fn save(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let (_cursor_pos, buffer_id) = match pane {
+        LayoutNode::Pane {
+            cursor_pos,
+            buffer_id,
+            ..
+        } => (cursor_pos, *buffer_id),
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    let buf = bm.get_buffer_mut(buffer_id)?;
+    Ok(buf.save()?)
+}
+
+pub fn is_buffer_binding(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<bool, LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let (_cursor_pos, buffer_id) = match pane {
+        LayoutNode::Pane {
+            cursor_pos,
+            buffer_id,
+            ..
+        } => (cursor_pos, *buffer_id),
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    let buf = bm.get_buffer_mut(buffer_id)?;
+
+    Ok(buf.path.is_some())
+}
+
+pub fn revoke(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let (_cursor_pos, buffer_id) = match pane {
+        LayoutNode::Pane {
+            cursor_pos,
+            buffer_id,
+            ..
+        } => (cursor_pos, *buffer_id),
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    let buf = bm.get_buffer_mut(buffer_id)?;
+    buf.revoke();
+
+    Ok(())
 }
 
 pub fn kaomoji_to_text(kind: KaoMoJi) -> String {

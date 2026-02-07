@@ -30,6 +30,8 @@ mod utils;
 mod command;
 use command::*;
 
+mod layout;
+
 fn main() -> Result<()> {
     // setup terminal
     color_eyre::install()?;
@@ -41,8 +43,9 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
     let mut bm = BufferManager::new();
+    // initialize
     let init_screen = if let Some(p) = args.path {
-        let buf = match Buffer::from_file(p) {
+        match bm.add_new_buffer_from_file(p) {
             Err(e) => {
                 match e {
                     BufferError::NotAFile => {
@@ -54,7 +57,6 @@ fn main() -> Result<()> {
             }
             Ok(b) => b,
         };
-        bm.add_buffer(buf);
         Screen::Editor
     } else {
         Screen::Welcome
@@ -80,9 +82,12 @@ where
     <B as Backend>::Error: Sync + Send + 'static,
 {
     loop {
-        terminal.draw(|f| ui(f, app))?;
+        // todo: error handle
+        terminal.draw(|f| ui(f, app).unwrap())?;
 
         let cur_cmd = &mut app.command;
+        let layout_m = &mut app.layout_manager;
+        let buffer_m = &mut app.buf_manager; 
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
@@ -93,18 +98,14 @@ where
                         return Ok(());
                     }
                     KeyCode::Char('a') => {
-                        app.buf_manager.add_new_buffer("Untitled");
+                        create_new_buffer(buffer_m, layout_m, "Untitled");
                         app.current_screen = Screen::Editor;
                     }
                     _ => {}
                 },
                 Screen::Editor => {
-                    let cur_buf = if let Some(b) = app.buf_manager.get_current_buffer_mut() {
-                        b
-                    } else {
-                        return Ok(());
-                    };
-
+                    // todo: handle error
+                
                     match (key.modifiers, key.code) {
                         // exit
                         (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
@@ -112,8 +113,9 @@ where
                         }
                         // save file
                         (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
-                            if cur_buf.path.is_some() {
-                                let _ = cur_buf.save();
+                            // todo: error handle
+                            if is_buffer_binding(buffer_m, layout_m).unwrap() {
+                                let _ = save(buffer_m, layout_m);
                             } else {
                                 app.current_screen = Screen::Command;
                                 let _ = cur_cmd.ask_and_save();
@@ -121,44 +123,43 @@ where
                         }
                         // revoke
                         (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
-                            cur_buf.revoke();
+                            revoke(buffer_m, layout_m);
                         }
-                        // revoke
+                        // move cursor to the head of line
                         (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
-                            cur_buf.mv_cursor_head();
+                            mv_cursor_head(layout_m);
                         }
-                        // revoke
+                        // move cursor to the end of line
                         (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
-                            cur_buf.mv_cursor_tail();
+                            mv_cursor_tail(buffer_m, layout_m);
                         }
                         // active the command line
                         (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                             app.current_screen = Screen::Command;
                         }
 
-                        (_, KeyCode::Left) => cur_buf.mv_cursor_left(),
-                        (_, KeyCode::Right) => cur_buf.mv_cursor_right(),
-                        (_, KeyCode::Up) => cur_buf.mv_cursor_up(),
-                        (_, KeyCode::Down) => cur_buf.mv_cursor_down(),
+                        (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
+                        (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
+                        (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
+                        (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
                         (KeyModifiers::NONE, KeyCode::Char(ch)) => {
-                            if let Ok(_) = cur_buf.add_content_at(ch.to_string().as_str()) {
-                                cur_buf.mv_cursor_right();
+                            if let Ok(_) = add_content_at(buffer_m, layout_m, ch.to_string().as_str()) {
+                                mv_cursor_right(buffer_m, layout_m);
                             }
                         }
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            cur_buf.handle_enter();
+                            handle_enter(buffer_m, layout_m);
                         }
                         (KeyModifiers::NONE, KeyCode::Backspace) => {
-                            cur_buf.handle_backspace();
+                            handle_backspace(buffer_m, layout_m);
                         }
                         _ => {}
                     }
                 }
                 Screen::Command => {
-
                     match (key.modifiers, key.code) {
                         // exit
-                        (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
+                        (KeyModifiers::CONTROL, KeyCode::Char('q')) | (KeyModifiers::NONE, KeyCode::Esc) => {
                             cur_cmd.clean_all();
                             app.current_screen = Screen::Editor
                         }
@@ -174,7 +175,7 @@ where
                         (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            let ret = cur_cmd.handle_command(&mut app.buf_manager).unwrap();
+                            let ret = cur_cmd.handle_command(buffer_m, layout_m).unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor
                             }
