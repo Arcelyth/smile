@@ -67,14 +67,16 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
 
             let lay_m = &mut app.layout_manager;
 
-            let editor_rect = render_layout(
+            let editor_rect = if let Some(rect) = render_layout(
                 &lay_m.panes.as_ref().ok_or(LayoutError::NoNode)?.clone(),
                 root[0],
                 frame,
                 &app.buf_manager,
                 &app.command,
                 &mut app.layout_manager,
-            )?;
+            )? { rect } else {
+                return Err(RenderError::RenderLayoutError)
+            };
 
             // command frame include kaomoji and command line
             let cmd = &mut app.command;
@@ -205,16 +207,19 @@ pub fn render_layout(
     buf_m: &BufferManager,
     cmd: &KaoCo,
     layout_m: &mut LayoutManager,
-) -> Result<Rect, RenderError> {
-    let mut cur_rect = area;
+) -> Result<Option<Rect>, RenderError> {
     match node {
-        LayoutNode::Pane { id, .. } => {
-            let buf = buf_m.get_buffer(*id)?;
-            let res_rect = render_buffer(&buf, area, f, layout_m, buf_m);
+        LayoutNode::Pane { id, buffer_id, .. } => {
+            let buf = buf_m.get_buffer(*buffer_id)?;
+            let res_rect = render_buffer(&buf, area, f, layout_m, buf_m)?;
+
             if *id == layout_m.current_layout {
-                cur_rect = res_rect?;
+                Ok(Some(res_rect))
+            } else {
+                Ok(None)
             }
         }
+
         LayoutNode::Split {
             direc,
             ratio,
@@ -239,13 +244,68 @@ pub fn render_layout(
                     .split(area),
             };
 
-            render_layout(first, chunks[0], f, buf_m, cmd, layout_m)?;
-            render_layout(second, chunks[1], f, buf_m, cmd, layout_m)?;
+            if let Some(r) = render_layout(first, chunks[0], f, buf_m, cmd, layout_m)? {
+                return Ok(Some(r));
+            }
+
+            if let Some(r) = render_layout(second, chunks[1], f, buf_m, cmd, layout_m)? {
+                return Ok(Some(r));
+            }
+
+            Ok(None)
         }
-    };
-    Ok(cur_rect)
+    }
 }
 
+
+//pub fn render_layout(
+//    node: &LayoutNode,
+//    area: Rect,
+//    f: &mut Frame,
+//    buf_m: &BufferManager,
+//    cmd: &KaoCo,
+//    layout_m: &mut LayoutManager,
+//) -> Result<Rect, RenderError> {
+//    let mut cur_rect = area;
+//    match node {
+//        LayoutNode::Pane { id, buffer_id, .. } => {
+//            let buf = buf_m.get_buffer(*buffer_id)?;
+//            let res_rect = render_buffer(&buf, area, f, layout_m, buf_m);
+//            if *id == layout_m.current_layout {
+//                cur_rect = res_rect?;
+//            }
+//        }
+//        LayoutNode::Split {
+//            direc,
+//            ratio,
+//            first,
+//            second,
+//        } => {
+//            let chunks = match direc {
+//                SplitDirection::Horizontal => Layout::default()
+//                    .direction(Direction::Vertical)
+//                    .constraints([
+//                        Constraint::Percentage((ratio * 100.0) as u16),
+//                        Constraint::Percentage(((1.0 - ratio) * 100.0) as u16),
+//                    ])
+//                    .split(area),
+//
+//                SplitDirection::Vertical => Layout::default()
+//                    .direction(Direction::Horizontal)
+//                    .constraints([
+//                        Constraint::Percentage((ratio * 100.0) as u16),
+//                        Constraint::Percentage(((1.0 - ratio) * 100.0) as u16),
+//                    ])
+//                    .split(area),
+//            };
+//
+//            render_layout(first, chunks[0], f, buf_m, cmd, layout_m)?;
+//            render_layout(second, chunks[1], f, buf_m, cmd, layout_m)?;
+//        }
+//    };
+//    Ok(cur_rect)
+//}
+//
 pub fn render_buffer(
     buf: &Buffer,
     rect: Rect,

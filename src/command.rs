@@ -194,6 +194,12 @@ impl KaoCo {
                 "new buffer" => {
                     buf_m.add_new_buffer("Untitled");
                 }
+                "sv" => {
+                    split(buf_m, lm, SplitDirection::Vertical, None)?;
+                }
+                "sh" => {
+                    split(buf_m, lm, SplitDirection::Horizontal, None)?;
+                }
                 _ => {
                     self.say = "Unknown command".into();
                     self.status = CmdStatus::Failed;
@@ -285,7 +291,10 @@ pub fn save(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), Layout
     Ok(buf.save()?)
 }
 
-pub fn is_buffer_binding(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<bool, LayoutError> {
+pub fn is_buffer_binding(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+) -> Result<bool, LayoutError> {
     let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
 
     let (_cursor_pos, buffer_id) = match pane {
@@ -317,6 +326,29 @@ pub fn revoke(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), Layo
     let buf = bm.get_buffer_mut(buffer_id)?;
     buf.revoke();
 
+    Ok(())
+}
+
+pub fn split(bm: &mut BufferManager, lm: &mut LayoutManager, direc: SplitDirection, buf_id: Option<usize>) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
+
+    let id= match pane {
+        LayoutNode::Pane {
+            id,
+            ..
+        } => id,
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    let new_id = match buf_id {
+        Some(new_id) => {
+            // check if the buffer id is valid
+            Some(bm.get_buffer(new_id)?.id) 
+        }
+        None => None
+    };
+
+    lm.split(id, new_id, direc, bm)?;
     Ok(())
 }
 

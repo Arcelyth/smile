@@ -37,7 +37,9 @@ pub enum RenderError {
     #[error("Buffer error: {0}")]
     BufferErr(#[from] BufferError),
     #[error("Layout error: {0}")]
-    LayoutErr(#[from] LayoutError)
+    LayoutErr(#[from] LayoutError),
+    #[error("Render layout error")]
+    RenderLayoutError
 }
 
 
