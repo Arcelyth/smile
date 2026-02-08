@@ -14,14 +14,14 @@ impl LayoutManager {
     pub fn new() -> Self {
         Self {
             id_counter: 1,
-            panes: None,
+            panes: None, 
             current_layout: 0,
         }
     }
 
     pub fn init(&mut self, buffer_id: usize) {
-        self.id_counter += 1;
         self.panes = Some(LayoutNode::new_pane(1, buffer_id));
+        self.id_counter += 1;
         self.current_layout = 1;
     }
 

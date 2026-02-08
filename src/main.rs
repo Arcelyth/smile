@@ -42,27 +42,15 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let args = Args::parse();
-    let mut bm = BufferManager::new();
+    let mut app = App::new();
     // initialize
-    let init_screen = if let Some(p) = args.path {
-        match bm.add_new_buffer_from_file(p) {
-            Err(e) => {
-                match e {
-                    BufferError::NotAFile => {
-                        println!("The input is not a file.");
-                    }
-                    _ => println!("Unknown Error"),
-                }
-                return Ok(());
-            }
-            Ok(b) => b,
-        };
-        Screen::Editor
+    if let Some(_) = args.path {
+        // todo: error handle
+        app.init(args.path).unwrap();
     } else {
-        Screen::Welcome
+        app.current_screen = Screen::Welcome;
     };
-    // create app and run
-    let mut app = App::from(init_screen, bm);
+
     run_app(&mut terminal, &mut app)?;
 
     // restore terminal
@@ -83,7 +71,7 @@ where
 {
     loop {
         // todo: error handle
-        terminal.draw(|f| ui(f, app).unwrap())?;
+        terminal.draw(|f| ui(f, app).unwrap());
 
         let cur_cmd = &mut app.command;
         let layout_m = &mut app.layout_manager;
@@ -98,13 +86,12 @@ where
                         return Ok(());
                     }
                     KeyCode::Char('a') => {
-                        create_new_buffer(buffer_m, layout_m, "Untitled");
-                        app.current_screen = Screen::Editor;
+                        // todo: handle error
+                        app.init(None).unwrap();
                     }
                     _ => {}
                 },
                 Screen::Editor => {
-                    // todo: handle error
                 
                     match (key.modifiers, key.code) {
                         // exit

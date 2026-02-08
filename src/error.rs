@@ -1,60 +1,43 @@
-#![allow(dead_code)]
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum BufferError {
+    #[error("Invalid position.")]
     InvalidPosition,
+    #[error("Invalid buffer id.")]
     InvalidId,
+    #[error("Not a file.")]
     NotAFile,
+    #[error("Invalid path.")]
     InvalidPath,
-    IOError(std::io::Error),
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
-impl From<std::io::Error> for BufferError {
-    fn from(err: std::io::Error) -> Self {
-        match err.kind() {
-            _ => BufferError::IOError(err),
-        }
-    }
-}
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum LayoutError {
+    #[error("Layout ID not found.")]
     IdNotFound,
+    #[error("Pane not found.")]
     PaneNotFound,
+    #[error("No node in the layout.")]
     NoNode,
+    #[error("Not pane.")]
     NotPane,
-    BufferErr(BufferError),
-    IOError(std::io::Error),
+    #[error("Buffer error: {0}")]
+    BufferErr(#[from] BufferError),
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
-impl From<BufferError> for LayoutError {
-    fn from(err: BufferError) -> Self {
-        Self::BufferErr(err)
-    }
-}
 
-impl From<std::io::Error> for LayoutError{
-    fn from(err: std::io::Error) -> Self {
-        match err.kind() {
-            _ => LayoutError::IOError(err),
-        }
-    }
-}
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum RenderError {
-    BufferErr(BufferError),
-    LayoutErr(LayoutError)
+    #[error("Buffer error: {0}")]
+    BufferErr(#[from] BufferError),
+    #[error("Layout error: {0}")]
+    LayoutErr(#[from] LayoutError)
 }
 
-impl From<BufferError> for RenderError {
-    fn from(err: BufferError) -> Self {
-        Self::BufferErr(err)
-    }
-}
-
-impl From<LayoutError> for RenderError {
-    fn from(err: LayoutError) -> Self {
-        Self::LayoutErr(err)
-    }
-}
 

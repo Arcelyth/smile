@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 use crate::buffer::BufferManager;
-use crate::error::BufferError;
 use crate::command::*;
+use crate::error::BufferError;
+use crate::error::*;
 use crate::layout::layout_manager::*;
 
 #[derive(Debug)]
@@ -43,6 +44,29 @@ impl App {
         }
     }
 
+    pub fn init(&mut self, path: Option<String>) -> Result<(), LayoutError> {
+        let id = if let Some(p) = path {
+            match self.buf_manager.add_new_buffer_from_path(p) {
+                Err(e) => {
+                    match e {
+                        BufferError::NotAFile => {
+                            println!("The input is not a file.");
+                        }
+                        _ => println!("Unknown Error"),
+                    }
+                    return Ok(());
+                }
+                Ok(b) => b,
+            }
+        } else {
+            self.buf_manager.add_new_buffer("Untitled")
+        };
+
+        self.layout_manager.init(id);
+        self.current_screen = Screen::Editor;
+        Ok(())
+    }
+
     pub fn from(screen: Screen, buf_manager: BufferManager) -> Self {
         Self {
             buf_manager,
@@ -55,6 +79,4 @@ impl App {
             cursor_pos: (0, 0),
         }
     }
-    
- }
-
+}

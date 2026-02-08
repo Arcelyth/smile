@@ -382,24 +382,25 @@ pub struct BufferManager {
 impl BufferManager {
     pub fn new() -> Self {
         Self {
-            id_counter: 0,
+            id_counter: 1,
             buffers: HashMap::new(),
         }
     }
 
     pub fn add_new_buffer(&mut self, name: &str) -> usize {
-        let new_buffer = Buffer::new(name, self.id_counter);
+        let old_id = self.id_counter;
+        let new_buffer = Buffer::new(name, old_id);
+        self.buffers.insert(old_id, new_buffer);
         self.id_counter += 1;
-        self.buffers.insert(self.id_counter, new_buffer);
-        self.id_counter
+        old_id
     }
 
-    pub fn add_new_buffer_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<usize, BufferError> {
-        let new_buffer = Buffer::from_file(path, self.id_counter)?;
+    pub fn add_new_buffer_from_path<P: AsRef<Path>>(&mut self, path: P) -> Result<usize, BufferError> {
+        let old_id = self.id_counter;
+        let new_buffer = Buffer::from_file(path, old_id)?;
+        self.buffers.insert(old_id, new_buffer);
         self.id_counter += 1;
-        self.buffers.insert(self.id_counter, new_buffer);
-        Ok(self.id_counter)
-
+        Ok(old_id)
     } 
 
     pub fn get_buffer(&self, id: usize) -> Result<&Buffer, BufferError> {
