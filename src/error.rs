@@ -1,18 +1,45 @@
-#![allow(dead_code)]
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum BufferError {
+    #[error("Invalid position.")]
     InvalidPosition,
+    #[error("Invalid buffer id.")]
+    InvalidId,
+    #[error("Not a file.")]
     NotAFile,
+    #[error("Invalid path.")]
     InvalidPath,
-    IOError(std::io::Error),
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
-impl From<std::io::Error> for BufferError {
-    fn from(err: std::io::Error) -> Self {
-        match err.kind() {
-            _ => BufferError::IOError(err),
-        }
-    }
+
+#[derive(Error, Debug)]
+pub enum LayoutError {
+    #[error("Layout ID not found.")]
+    IdNotFound,
+    #[error("Pane not found.")]
+    PaneNotFound,
+    #[error("No node in the layout.")]
+    NoNode,
+    #[error("Not pane.")]
+    NotPane,
+    #[error("Buffer error: {0}")]
+    BufferErr(#[from] BufferError),
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
 }
+
+
+#[derive(Error, Debug)]
+pub enum RenderError {
+    #[error("Buffer error: {0}")]
+    BufferErr(#[from] BufferError),
+    #[error("Layout error: {0}")]
+    LayoutErr(#[from] LayoutError),
+    #[error("Render layout error")]
+    RenderLayoutError
+}
+
 
