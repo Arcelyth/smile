@@ -1,5 +1,6 @@
 #![allow(dead_code)]
-use crate::buffer::{Buffer, BufferManager};
+use crate::buffer::BufferManager;
+use crate::app::{Screen, App};
 use crate::error::*;
 use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
@@ -156,6 +157,7 @@ impl KaoCo {
         &mut self,
         buf_m: &mut BufferManager,
         lm: &mut LayoutManager,
+        cur_screen: &mut Screen, 
     ) -> Result<bool, LayoutError> {
         let buf = lm.get_current_buffer_mut(buf_m)?;
         match self.status {
@@ -199,6 +201,25 @@ impl KaoCo {
                 }
                 "sh" => {
                     split(buf_m, lm, SplitDirection::Horizontal, None)?;
+                }
+                "close" => {
+                    close_current_pane(lm, cur_screen)?;
+                    move_focus_in_pane(lm, MoveDir::Right);
+                }
+                "right pane" => {
+                    move_focus_in_pane(lm, MoveDir::Right);
+                }
+                "left pane" => {
+                    move_focus_in_pane(lm, MoveDir::Left);
+                }
+                "up pane" => {
+                    move_focus_in_pane(lm, MoveDir::Up);
+                }
+                "down pane" => {
+                    move_focus_in_pane(lm, MoveDir::Down);
+                }
+                "change pane" => {
+                    change_pane(lm, 1)?;
                 }
                 _ => {
                     self.say = "Unknown command".into();
@@ -329,26 +350,56 @@ pub fn revoke(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), Layo
     Ok(())
 }
 
-pub fn split(bm: &mut BufferManager, lm: &mut LayoutManager, direc: SplitDirection, buf_id: Option<usize>) -> Result<(), LayoutError> {
+pub fn split(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+    direc: SplitDirection,
+    buf_id: Option<usize>,
+) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
 
-    let id= match pane {
-        LayoutNode::Pane {
-            id,
-            ..
-        } => id,
+    let id = match pane {
+        LayoutNode::Pane { id, .. } => id,
         _ => return Err(LayoutError::NotPane),
     };
 
     let new_id = match buf_id {
         Some(new_id) => {
             // check if the buffer id is valid
-            Some(bm.get_buffer(new_id)?.id) 
+            Some(bm.get_buffer(new_id)?.id)
         }
-        None => None
+        None => None,
     };
 
     lm.split(id, new_id, direc, bm)?;
+    Ok(())
+}
+
+pub fn close_current_pane(lm: &mut LayoutManager, cur_screen: &mut Screen) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
+
+    let id = match pane {
+        LayoutNode::Pane { id, .. } => id,
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    lm.remove(id)?;
+
+    if lm.panes.is_none() {
+        *cur_screen = Screen::Welcome;
+    }
+    Ok(())
+}
+
+pub fn move_focus_in_pane(lm: &mut LayoutManager, direc: MoveDir) {
+    lm.move_focus(direc);
+}
+
+pub fn change_pane(lm: &mut LayoutManager, id: usize) -> Result<(), LayoutError> {
+    if !lm.contain_id(id) {
+        return Err(LayoutError::IdNotFound);
+    }
+    lm.current_layout = id;
     Ok(())
 }
 

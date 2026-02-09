@@ -39,7 +39,9 @@ pub enum RenderError {
     #[error("Layout error: {0}")]
     LayoutErr(#[from] LayoutError),
     #[error("Render layout error")]
-    RenderLayoutError
+    RenderLayoutError,
+    #[error("Rect not found")]
+    RectNotFound
 }
 
 

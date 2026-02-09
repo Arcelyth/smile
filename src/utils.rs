@@ -59,3 +59,7 @@ pub fn get_format_text(f: FileFormat) -> &'static str {
 pub fn arc_vec_to_string(v: Vec<Arc<str>>) -> Vec<String> {
     v.into_iter().map(|s| s.to_string()).collect()
 }
+
+pub fn overlap(a_start: u16, a_end: u16, b_start: u16, b_end: u16) -> bool {
+    a_start < b_end && b_start < a_end
+}

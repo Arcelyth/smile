@@ -74,13 +74,14 @@ where
         terminal.draw(|f| ui(f, app).unwrap());
 
         let cur_cmd = &mut app.command;
+        let cur_screen = &mut app.current_screen;
         let layout_m = &mut app.layout_manager;
         let buffer_m = &mut app.buf_manager; 
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            match app.current_screen {
+            match *cur_screen {
                 Screen::Welcome => match key.code {
                     KeyCode::Char('q') => {
                         return Ok(());
@@ -162,7 +163,7 @@ where
                         (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            let ret = cur_cmd.handle_command(buffer_m, layout_m).unwrap();
+                            let ret = cur_cmd.handle_command(buffer_m, layout_m, cur_screen).unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor
                             }

@@ -3,6 +3,7 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
+use std::collections::HashMap;
 
 use crate::app::{App, Screen};
 use crate::buffer::*;
@@ -61,22 +62,22 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
         _ => {
             let root = Layout::default()
                 .direction(Direction::Vertical)
-                .margin(2)
                 .constraints([Constraint::Min(0), Constraint::Length(3)])
                 .split(frame.area());
 
-            let lay_m = &mut app.layout_manager;
+            let layout_m = &mut app.layout_manager;
 
-            let editor_rect = if let Some(rect) = render_layout(
-                &lay_m.panes.as_ref().ok_or(LayoutError::NoNode)?.clone(),
+            let mut panes = layout_m.panes.as_mut().ok_or(LayoutError::NoNode)?;
+            let editor_rect = render_layout(
+                &mut panes,
                 root[0],
                 frame,
                 &app.buf_manager,
                 &app.command,
-                &mut app.layout_manager,
-            )? { rect } else {
-                return Err(RenderError::RenderLayoutError)
-            };
+                &mut layout_m.pane_rects,
+                layout_m.current_layout,
+            )?
+            .ok_or(RenderError::RenderLayoutError)?;
 
             // command frame include kaomoji and command line
             let cmd = &mut app.command;
@@ -158,6 +159,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
 
                             let cursor_x =
                                 editor_rect.x + (vx.saturating_sub(scroll_offset.0)) as u16;
+                            //editor_rect.x + (vx.saturating_sub(scroll_offset.0)) as u16;
                             let cursor_y =
                                 editor_rect.y + (cy.saturating_sub(scroll_offset.1)) as u16 + 1;
 
@@ -166,15 +168,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
                             }
                         }
                     }
-                    //                    let vx = buf.get_visual_width_upto(buf.cursor_pos.1, buf.cursor_pos.0);
-                    //                    let cursor_x = editor_rect.x + (vx.saturating_sub(buf.scroll_offset.0)) as u16;
-                    //                    let cursor_y = editor_rect.y
-                    //                        + (buf.cursor_pos.1.saturating_sub(buf.scroll_offset.1)) as u16
-                    //                        + 1;
-                    //                    if cursor_x < editor_rect.right() && cursor_y < editor_rect.bottom() {
-                    //                        frame.set_cursor_position((cursor_x, cursor_y));
-                    //                    }
-                    //
                 }
                 Screen::Command => {
                     let command_line_area = command_line_frame[1];
@@ -201,19 +194,38 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
 }
 
 pub fn render_layout(
-    node: &LayoutNode,
+    node: &mut LayoutNode,
     area: Rect,
     f: &mut Frame,
     buf_m: &BufferManager,
     cmd: &KaoCo,
-    layout_m: &mut LayoutManager,
+    pane_rects: &mut HashMap<usize, Rect>,
+    current_layout: usize,
 ) -> Result<Option<Rect>, RenderError> {
     match node {
-        LayoutNode::Pane { id, buffer_id, .. } => {
+        LayoutNode::Pane {
+            id,
+            cursor_pos,
+            scroll_offset,
+            scroll_thres,
+            buffer_id,
+            ..
+        } => {
             let buf = buf_m.get_buffer(*buffer_id)?;
-            let res_rect = render_buffer(&buf, area, f, layout_m, buf_m)?;
-
-            if *id == layout_m.current_layout {
+            let res_rect = render_buffer(
+                &buf,
+                area,
+                f,
+                buf_m,
+                cursor_pos,
+                scroll_offset,
+                scroll_thres,
+                *buffer_id,
+                current_layout,
+                *id,
+            )?;
+            pane_rects.insert(*id, area);
+            if *id == current_layout {
                 Ok(Some(res_rect))
             } else {
                 Ok(None)
@@ -230,102 +242,47 @@ pub fn render_layout(
                 SplitDirection::Horizontal => Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Percentage((ratio * 100.0) as u16),
-                        Constraint::Percentage(((1.0 - ratio) * 100.0) as u16),
+                        Constraint::Percentage((*ratio * 100.0) as u16),
+                        Constraint::Percentage(((1.0 - *ratio) * 100.0) as u16),
                     ])
                     .split(area),
 
                 SplitDirection::Vertical => Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([
-                        Constraint::Percentage((ratio * 100.0) as u16),
-                        Constraint::Percentage(((1.0 - ratio) * 100.0) as u16),
+                        Constraint::Percentage((*ratio * 100.0) as u16),
+                        Constraint::Percentage(((1.0 - *ratio) * 100.0) as u16),
                     ])
                     .split(area),
             };
 
-            if let Some(r) = render_layout(first, chunks[0], f, buf_m, cmd, layout_m)? {
+            let res1 = render_layout(first, chunks[0], f, buf_m, cmd, pane_rects, current_layout)?;
+            let res2 = render_layout(second, chunks[1], f, buf_m, cmd, pane_rects, current_layout)?;
+
+            if let Some(r) = res1 {
                 return Ok(Some(r));
             }
 
-            if let Some(r) = render_layout(second, chunks[1], f, buf_m, cmd, layout_m)? {
+            if let Some(r) = res2 {
                 return Ok(Some(r));
             }
-
             Ok(None)
         }
     }
 }
 
-
-//pub fn render_layout(
-//    node: &LayoutNode,
-//    area: Rect,
-//    f: &mut Frame,
-//    buf_m: &BufferManager,
-//    cmd: &KaoCo,
-//    layout_m: &mut LayoutManager,
-//) -> Result<Rect, RenderError> {
-//    let mut cur_rect = area;
-//    match node {
-//        LayoutNode::Pane { id, buffer_id, .. } => {
-//            let buf = buf_m.get_buffer(*buffer_id)?;
-//            let res_rect = render_buffer(&buf, area, f, layout_m, buf_m);
-//            if *id == layout_m.current_layout {
-//                cur_rect = res_rect?;
-//            }
-//        }
-//        LayoutNode::Split {
-//            direc,
-//            ratio,
-//            first,
-//            second,
-//        } => {
-//            let chunks = match direc {
-//                SplitDirection::Horizontal => Layout::default()
-//                    .direction(Direction::Vertical)
-//                    .constraints([
-//                        Constraint::Percentage((ratio * 100.0) as u16),
-//                        Constraint::Percentage(((1.0 - ratio) * 100.0) as u16),
-//                    ])
-//                    .split(area),
-//
-//                SplitDirection::Vertical => Layout::default()
-//                    .direction(Direction::Horizontal)
-//                    .constraints([
-//                        Constraint::Percentage((ratio * 100.0) as u16),
-//                        Constraint::Percentage(((1.0 - ratio) * 100.0) as u16),
-//                    ])
-//                    .split(area),
-//            };
-//
-//            render_layout(first, chunks[0], f, buf_m, cmd, layout_m)?;
-//            render_layout(second, chunks[1], f, buf_m, cmd, layout_m)?;
-//        }
-//    };
-//    Ok(cur_rect)
-//}
-//
 pub fn render_buffer(
     buf: &Buffer,
     rect: Rect,
     frame: &mut Frame,
-    layout_m: &mut LayoutManager,
     buf_m: &BufferManager,
+    cursor_pos: &mut (usize, usize),
+    scroll_offset: &mut (usize, usize),
+    scroll_thres: &mut (usize, usize),
+    buffer_id: usize,
+    current_layout: usize,
+    pane_id: usize,
 ) -> Result<Rect, LayoutError> {
-    let cur_pane = layout_m
-        .get_current_pane()
-        .ok_or(LayoutError::PaneNotFound)?;
-    let (cursor_pos, _ , scroll_offset) = match cur_pane {
-        LayoutNode::Pane {
-            cursor_pos,
-            buffer_id,
-            scroll_offset, 
-            ..
-        } => (cursor_pos, buffer_id, scroll_offset),
-        _ => return Err(LayoutError::NotPane),
-    };
-
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)])
@@ -347,15 +304,23 @@ pub fn render_buffer(
     let viewport_height = editor_main[1].height.saturating_sub(2) as usize;
     let viewport_width = editor_main[1].width.saturating_sub(2) as usize;
 
-    layout_m.check_cursor_pos(buf_m)?;
-    layout_m.update_scroll(buf_m, viewport_height, viewport_width)?;
+    check_cursor_pos(buf_m, cursor_pos, buffer_id)?;
+    update_scroll(
+        buf_m,
+        viewport_height,
+        viewport_width,
+        cursor_pos,
+        scroll_offset,
+        scroll_thres,
+        buffer_id,
+    )?;
     // editor's color
     let border_color_active = Color::Rgb(181, 235, 181);
     let border_color_no = Color::Rgb(129, 181, 129);
     let font_color = Color::Rgb(240, 235, 213);
 
     // handle editor's color
-    let border_color = if layout_m.current_layout == buf.id {
+    let border_color = if current_layout == pane_id {
         border_color_active
     } else {
         border_color_no
