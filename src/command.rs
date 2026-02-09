@@ -1,6 +1,6 @@
 #![allow(dead_code)]
+use crate::app::{App, Screen};
 use crate::buffer::BufferManager;
-use crate::app::{Screen, App};
 use crate::error::*;
 use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
@@ -157,7 +157,7 @@ impl KaoCo {
         &mut self,
         buf_m: &mut BufferManager,
         lm: &mut LayoutManager,
-        cur_screen: &mut Screen, 
+        cur_screen: &mut Screen,
     ) -> Result<bool, LayoutError> {
         let buf = lm.get_current_buffer_mut(buf_m)?;
         match self.status {
@@ -194,7 +194,11 @@ impl KaoCo {
                     buf.change_name("omg");
                 }
                 "new buffer" => {
-                    buf_m.add_new_buffer("Untitled");
+                    add_new_buffer(buf_m, lm)?;
+                }
+                s if s.starts_with("nbp:") => {
+                    let path = &s[4..]; 
+                    add_new_buffer_from_path(buf_m, lm, path)?;
                 }
                 "sv" => {
                     split(buf_m, lm, SplitDirection::Vertical, None)?;
@@ -292,7 +296,7 @@ pub fn add_content_at(
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
-    buf.add_content_at(add_str, *cursor_pos);
+    buf.add_content_at(add_str, *cursor_pos)?;
     Ok(())
 }
 
@@ -375,7 +379,10 @@ pub fn split(
     Ok(())
 }
 
-pub fn close_current_pane(lm: &mut LayoutManager, cur_screen: &mut Screen) -> Result<(), LayoutError> {
+pub fn close_current_pane(
+    lm: &mut LayoutManager,
+    cur_screen: &mut Screen,
+) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
 
     let id = match pane {
@@ -400,6 +407,18 @@ pub fn change_pane(lm: &mut LayoutManager, id: usize) -> Result<(), LayoutError>
         return Err(LayoutError::IdNotFound);
     }
     lm.current_layout = id;
+    Ok(())
+}
+
+pub fn add_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
+    let id = bm.add_new_buffer("Untitled");
+    lm.change_current_buffer_id(id)?;
+    Ok(())
+}
+
+pub fn add_new_buffer_from_path(bm: &mut BufferManager, lm: &mut LayoutManager, p: &str) -> Result<(), LayoutError> {
+    let id = bm.add_new_buffer_from_path(p)?;
+    lm.change_current_buffer_id(id)?;
     Ok(())
 }
 
