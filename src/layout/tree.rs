@@ -164,6 +164,8 @@ pub fn remove_pane(
 pub fn get_first_pane_id(node: &LayoutNode) -> Option<usize> {
     match node {
         LayoutNode::Pane { id, .. } => Some(*id),
-        LayoutNode::Split { first, .. } => get_first_pane_id(first),
+        LayoutNode::Split { first, second, .. } => {
+            get_first_pane_id(first).or_else(|| get_first_pane_id(second))
+        }
     }
 }

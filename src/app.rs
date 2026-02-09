@@ -28,6 +28,7 @@ pub struct App {
     pub cursor_pos: (usize, usize),
     pub scroll_offset: (usize, usize),
     pub scroll_threshold: (usize, usize),
+    pub should_exit: bool,
 }
 
 impl App {
@@ -41,6 +42,7 @@ impl App {
             scroll_offset: (0, 0),
             scroll_threshold: (0, 0),
             cursor_pos: (0, 0),
+            should_exit: false,
         }
     }
 
@@ -77,6 +79,7 @@ impl App {
             scroll_offset: (0, 0),
             scroll_threshold: (0, 0),
             cursor_pos: (0, 0),
+            should_exit: false,
         }
     }
 }

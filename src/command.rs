@@ -385,7 +385,7 @@ pub fn close_current_pane(lm: &mut LayoutManager, cur_screen: &mut Screen) -> Re
 
     lm.remove(id)?;
 
-    if lm.panes.is_none() {
+    if lm.panes.is_none() || lm.current_layout == 0 {
         *cur_screen = Screen::Welcome;
     }
     Ok(())

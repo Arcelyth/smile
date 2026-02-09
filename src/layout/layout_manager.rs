@@ -71,12 +71,14 @@ impl LayoutManager {
             if let Some(ref new_root) = self.panes {
                 if let Some(new_id) = get_first_pane_id(new_root) {
                     self.current_layout = new_id;
+                } else {
+                    self.current_layout = 0;
                 }
             } else {
                 self.current_layout = 0;
             }
         }
-
+        self.pane_rects.remove(&target_id);
         Ok(Some(target_id))
     }
 
