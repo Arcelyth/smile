@@ -121,3 +121,51 @@ pub fn split_current(
         split_current(second, target, new_id, new_buf_id, direc, buf_m);
     }
 }
+
+pub fn remove_pane(
+    node: LayoutNode,
+    target: usize,
+) -> Option<LayoutNode> {
+    match node {
+        LayoutNode::Pane { id, .. } => {
+            if id == target {
+                None
+            } else {
+                Some(node)
+            }
+        }
+
+        LayoutNode::Split {
+            direc,
+            ratio,
+            first,
+            second,
+        } => {
+            let left = remove_pane(*first, target);
+            let right = remove_pane(*second, target);
+
+            match (left, right) {
+                (Some(l), Some(r)) => Some(LayoutNode::Split {
+                    direc,
+                    ratio,
+                    first: Box::new(l),
+                    second: Box::new(r),
+                }),
+
+                (Some(l), None) => Some(l),
+                (None, Some(r)) => Some(r),
+
+                (None, None) => None,
+            }
+        }
+    }
+}
+
+pub fn get_first_pane_id(node: &LayoutNode) -> Option<usize> {
+    match node {
+        LayoutNode::Pane { id, .. } => Some(*id),
+        LayoutNode::Split { first, second, .. } => {
+            get_first_pane_id(first).or_else(|| get_first_pane_id(second))
+        }
+    }
+}

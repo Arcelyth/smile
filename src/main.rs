@@ -71,16 +71,32 @@ where
 {
     loop {
         // todo: error handle
-        terminal.draw(|f| ui(f, app).unwrap());
+        terminal.draw(|f| {
+            match ui(f, app) {
+                Ok(_) => {}
+                Err(e) => match e {
+                    RenderError::LayoutErr(LayoutError::NoNode) => {
+                        app.should_exit = true;
+                    }
+                    error => {
+                        println!("{:?}", error)
+                    }
+                }
+            }
+        })?;
 
+        if app.should_exit {
+            break Ok(());
+        }
         let cur_cmd = &mut app.command;
+        let cur_screen = &mut app.current_screen;
         let layout_m = &mut app.layout_manager;
-        let buffer_m = &mut app.buf_manager; 
+        let buffer_m = &mut app.buf_manager;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            match app.current_screen {
+            match *cur_screen {
                 Screen::Welcome => match key.code {
                     KeyCode::Char('q') => {
                         return Ok(());
@@ -92,7 +108,6 @@ where
                     _ => {}
                 },
                 Screen::Editor => {
-                
                     match (key.modifiers, key.code) {
                         // exit
                         (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
@@ -130,7 +145,9 @@ where
                         (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
                         (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
                         (KeyModifiers::NONE, KeyCode::Char(ch)) => {
-                            if let Ok(_) = add_content_at(buffer_m, layout_m, ch.to_string().as_str()) {
+                            if let Ok(_) =
+                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
+                            {
                                 mv_cursor_right(buffer_m, layout_m);
                             }
                         }
@@ -146,7 +163,8 @@ where
                 Screen::Command => {
                     match (key.modifiers, key.code) {
                         // exit
-                        (KeyModifiers::CONTROL, KeyCode::Char('q')) | (KeyModifiers::NONE, KeyCode::Esc) => {
+                        (KeyModifiers::CONTROL, KeyCode::Char('q'))
+                        | (KeyModifiers::NONE, KeyCode::Esc) => {
                             cur_cmd.clean_all();
                             app.current_screen = Screen::Editor
                         }
@@ -162,7 +180,9 @@ where
                         (_, KeyCode::Left) => cur_cmd.mv_cursor_left(),
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            let ret = cur_cmd.handle_command(buffer_m, layout_m).unwrap();
+                            let ret = cur_cmd
+                                .handle_command(buffer_m, layout_m, cur_screen)
+                                .unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor
                             }

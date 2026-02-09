@@ -1,20 +1,33 @@
 use super::tree::*;
 use crate::buffer::*;
 use crate::error::*;
-use crate::utils::{char_to_byte_idx, get_line_len};
+use crate::utils::{char_to_byte_idx, get_line_len, overlap};
+use ratatui::layout::Rect;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct LayoutManager {
+    pub pane_rects: HashMap<usize, Rect>,
     pub id_counter: usize,
     pub panes: Option<LayoutNode>,
     pub current_layout: usize,
 }
 
+// for moving in panes
+#[derive(Debug, Copy, Clone)]
+pub enum MoveDir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 impl LayoutManager {
     pub fn new() -> Self {
         Self {
+            pane_rects: HashMap::new(),
             id_counter: 1,
-            panes: None, 
+            panes: None,
             current_layout: 0,
         }
     }
@@ -41,6 +54,96 @@ impl LayoutManager {
         self.current_layout = self.id_counter;
         self.id_counter += 1;
         Ok(self.id_counter)
+    }
+
+    pub fn remove(&mut self, target_id: usize) -> Result<Option<usize>, LayoutError> {
+        let node = if let Some(n) = &self.panes {
+            n
+        } else {
+            return Err(LayoutError::NoNode);
+        };
+
+        let new_nodes = remove_pane(node.clone(), target_id);
+
+        self.panes = new_nodes;
+
+        if self.current_layout == target_id {
+            if let Some(ref new_root) = self.panes {
+                if let Some(new_id) = get_first_pane_id(new_root) {
+                    self.current_layout = new_id;
+                } else {
+                    self.current_layout = 0;
+                }
+            } else {
+                self.current_layout = 0;
+            }
+        }
+        self.pane_rects.remove(&target_id);
+        Ok(Some(target_id))
+    }
+
+    pub fn get_current_rect(&self) -> Option<&Rect> {
+        let current = self.current_layout;
+        let pane_rects = &self.pane_rects;
+        pane_rects.get(&current)
+    }
+
+    pub fn move_focus(&mut self, dir: MoveDir) -> Option<usize> {
+        let current = self.current_layout;
+        let pane_rects = &self.pane_rects;
+        let cur = pane_rects.get(&current)?;
+
+        let mut best: Option<(usize, u16)> = None;
+
+        for (&id, rect) in pane_rects {
+            if id == current {
+                continue;
+            }
+
+            let candidate = match dir {
+                MoveDir::Right => {
+                    rect.x >= cur.x + cur.width
+                        && overlap(rect.y, rect.y + rect.height, cur.y, cur.y + cur.height)
+                }
+                MoveDir::Left => {
+                    rect.x + rect.width <= cur.x
+                        && overlap(rect.y, rect.y + rect.height, cur.y, cur.y + cur.height)
+                }
+                MoveDir::Down => {
+                    rect.y >= cur.y + cur.height
+                        && overlap(rect.x, rect.x + rect.width, cur.x, cur.x + cur.width)
+                }
+                MoveDir::Up => {
+                    rect.y + rect.height <= cur.y
+                        && overlap(rect.x, rect.x + rect.width, cur.x, cur.x + cur.width)
+                }
+            };
+
+            if !candidate {
+                continue;
+            }
+
+            let dist = match dir {
+                MoveDir::Right => rect.x - (cur.x + cur.width),
+                MoveDir::Left => cur.x - (rect.x + rect.width),
+                MoveDir::Down => rect.y - (cur.y + cur.height),
+                MoveDir::Up => cur.y - (rect.y + rect.height),
+            };
+
+            match best {
+                None => best = Some((id, dist)),
+                Some((_, best_dist)) if dist < best_dist => best = Some((id, dist)),
+                _ => {}
+            }
+        }
+
+        match best.map(|(id, _)| id) {
+            res @ Some(id) => {
+                self.current_layout = id;
+                res
+            }
+            None => None,
+        }
     }
 
     pub fn get_current_pane(&self) -> Option<LayoutNode> {
@@ -84,14 +187,20 @@ impl LayoutManager {
     }
 
     pub fn change_current_buffer_id(&mut self, id: usize) -> Result<(), LayoutError> {
-        let pane = self.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+        let pane = self
+            .get_current_pane_mut()
+            .ok_or(LayoutError::PaneNotFound)?;
         match pane {
-            LayoutNode::Pane { buffer_id , ..} => {
+            LayoutNode::Pane { buffer_id, .. } => {
                 *buffer_id = id;
-            },
+            }
             _ => return Err(LayoutError::NotPane),
         };
         Ok(())
+    }
+
+    pub fn contain_id(&self, id: usize) -> bool {
+        self.pane_rects.contains_key(&id)
     }
 
     pub fn mv_cursor_right(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
@@ -225,7 +334,7 @@ impl LayoutManager {
         Ok(())
     }
 
-    pub fn mv_cursor_head(&mut self) -> Result<(), LayoutError>{
+    pub fn mv_cursor_head(&mut self) -> Result<(), LayoutError> {
         let pane = self
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
@@ -242,7 +351,6 @@ impl LayoutManager {
         cursor_pos.0 = 0;
         Ok(())
     }
-
 
     pub fn handle_backspace(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
         let pane = self
@@ -309,85 +417,62 @@ impl LayoutManager {
         buf.handle_change();
         Ok(())
     }
+}
 
-    pub fn update_scroll(
-        &mut self,
-        buf_m: &BufferManager,
-        viewport_height: usize,
-        viewport_width: usize,
-    ) -> Result<(), LayoutError> {
-        let pane = self
-            .get_current_pane_mut()
-            .ok_or(LayoutError::PaneNotFound)?;
+pub fn update_scroll(
+    buf_m: &BufferManager,
+    viewport_height: usize,
+    viewport_width: usize,
+    cursor_pos: &mut (usize, usize),
+    scroll_offset: &mut (usize, usize),
+    scroll_thres: &mut (usize, usize),
+    buffer_id: usize,
+) -> Result<(), LayoutError> {
+    let buf = buf_m.get_buffer(buffer_id)?;
 
-        let (cursor_pos, scroll_offset, scroll_thres, buffer_id) = match pane {
-            LayoutNode::Pane {
-                cursor_pos,
-                scroll_offset,
-                scroll_thres,
-                buffer_id,
-                ..
-            } => (cursor_pos, scroll_offset, scroll_thres, *buffer_id),
-            _ => return Err(LayoutError::NotPane),
-        };
+    let (x, y) = *cursor_pos;
+    let total_lines = buf.content.len();
 
-        let buf = buf_m.get_buffer(buffer_id)?;
-
-        let (x, y) = *cursor_pos;
-        let total_lines = buf.content.len();
-
-        if y >= total_lines {
-            cursor_pos.1 = total_lines.saturating_sub(1);
-        }
-
-        if y >= (scroll_offset.1 + viewport_height).saturating_sub(scroll_thres.1) {
-            scroll_offset.1 = y + scroll_thres.1 - viewport_height + 1;
-        }
-
-        if y < scroll_offset.1 {
-            scroll_offset.1 = y;
-        }
-
-        let line_width = buf.content[y].len();
-
-        if x >= (scroll_offset.0 + viewport_width).saturating_sub(scroll_thres.0) {
-            scroll_offset.0 = x + scroll_thres.0 - viewport_width + 1;
-        }
-
-        if x < scroll_offset.0 {
-            scroll_offset.0 = x;
-        }
-
-        Ok(())
+    if y >= total_lines {
+        cursor_pos.1 = total_lines.saturating_sub(1);
     }
 
-    pub fn check_cursor_pos(&mut self, buf_m: &BufferManager) -> Result<(), LayoutError> {
-        let pane = self
-            .get_current_pane_mut()
-            .ok_or(LayoutError::PaneNotFound)?;
-
-        let (cursor_pos, buffer_id) = match pane {
-            LayoutNode::Pane {
-                cursor_pos,
-                buffer_id,
-                ..
-            } => (cursor_pos, *buffer_id),
-            _ => return Err(LayoutError::NotPane),
-        };
-
-        let buf = buf_m.get_buffer(buffer_id)?;
-
-        let (px, py) = cursor_pos;
-
-        if *py >= buf.content.len() {
-            *py = buf.content.len().saturating_sub(1);
-        }
-
-        let line_len = get_line_len(&buf.content[*py]);
-        if *px > line_len {
-            *px = line_len;
-        }
-
-        Ok(())
+    if y >= (scroll_offset.1 + viewport_height).saturating_sub(scroll_thres.1) {
+        scroll_offset.1 = y + scroll_thres.1 - viewport_height + 1;
     }
+
+    if y < scroll_offset.1 {
+        scroll_offset.1 = y;
+    }
+
+    if x >= (scroll_offset.0 + viewport_width).saturating_sub(scroll_thres.0) {
+        scroll_offset.0 = x + scroll_thres.0 - viewport_width + 1;
+    }
+
+    if x < scroll_offset.0 {
+        scroll_offset.0 = x;
+    }
+
+    Ok(())
+}
+
+pub fn check_cursor_pos(
+    buf_m: &BufferManager,
+    cursor_pos: &mut (usize, usize),
+    buffer_id: usize,
+) -> Result<(), LayoutError> {
+    let buf = buf_m.get_buffer(buffer_id)?;
+
+    let (px, py) = cursor_pos;
+
+    if *py >= buf.content.len() {
+        *py = buf.content.len().saturating_sub(1);
+    }
+
+    let line_len = get_line_len(&buf.content[*py]);
+    if *px > line_len {
+        *px = line_len;
+    }
+
+    Ok(())
 }

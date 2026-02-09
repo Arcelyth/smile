@@ -1,5 +1,6 @@
 #![allow(dead_code)]
-use crate::buffer::{Buffer, BufferManager};
+use crate::app::{App, Screen};
+use crate::buffer::BufferManager;
 use crate::error::*;
 use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
@@ -156,6 +157,7 @@ impl KaoCo {
         &mut self,
         buf_m: &mut BufferManager,
         lm: &mut LayoutManager,
+        cur_screen: &mut Screen,
     ) -> Result<bool, LayoutError> {
         let buf = lm.get_current_buffer_mut(buf_m)?;
         match self.status {
@@ -192,13 +194,36 @@ impl KaoCo {
                     buf.change_name("omg");
                 }
                 "new buffer" => {
-                    buf_m.add_new_buffer("Untitled");
+                    add_new_buffer(buf_m, lm)?;
+                }
+                s if s.starts_with("nbp:") => {
+                    let path = &s[4..]; 
+                    add_new_buffer_from_path(buf_m, lm, path)?;
                 }
                 "sv" => {
                     split(buf_m, lm, SplitDirection::Vertical, None)?;
                 }
                 "sh" => {
                     split(buf_m, lm, SplitDirection::Horizontal, None)?;
+                }
+                "close" => {
+                    close_current_pane(lm, cur_screen)?;
+                    move_focus_in_pane(lm, MoveDir::Right);
+                }
+                "right pane" => {
+                    move_focus_in_pane(lm, MoveDir::Right);
+                }
+                "left pane" => {
+                    move_focus_in_pane(lm, MoveDir::Left);
+                }
+                "up pane" => {
+                    move_focus_in_pane(lm, MoveDir::Up);
+                }
+                "down pane" => {
+                    move_focus_in_pane(lm, MoveDir::Down);
+                }
+                "change pane" => {
+                    change_pane(lm, 1)?;
                 }
                 _ => {
                     self.say = "Unknown command".into();
@@ -271,7 +296,7 @@ pub fn add_content_at(
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
-    buf.add_content_at(add_str, *cursor_pos);
+    buf.add_content_at(add_str, *cursor_pos)?;
     Ok(())
 }
 
@@ -329,26 +354,71 @@ pub fn revoke(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), Layo
     Ok(())
 }
 
-pub fn split(bm: &mut BufferManager, lm: &mut LayoutManager, direc: SplitDirection, buf_id: Option<usize>) -> Result<(), LayoutError> {
+pub fn split(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+    direc: SplitDirection,
+    buf_id: Option<usize>,
+) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
 
-    let id= match pane {
-        LayoutNode::Pane {
-            id,
-            ..
-        } => id,
+    let id = match pane {
+        LayoutNode::Pane { id, .. } => id,
         _ => return Err(LayoutError::NotPane),
     };
 
     let new_id = match buf_id {
         Some(new_id) => {
             // check if the buffer id is valid
-            Some(bm.get_buffer(new_id)?.id) 
+            Some(bm.get_buffer(new_id)?.id)
         }
-        None => None
+        None => None,
     };
 
     lm.split(id, new_id, direc, bm)?;
+    Ok(())
+}
+
+pub fn close_current_pane(
+    lm: &mut LayoutManager,
+    cur_screen: &mut Screen,
+) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
+
+    let id = match pane {
+        LayoutNode::Pane { id, .. } => id,
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    lm.remove(id)?;
+
+    if lm.panes.is_none() || lm.current_layout == 0 {
+        *cur_screen = Screen::Welcome;
+    }
+    Ok(())
+}
+
+pub fn move_focus_in_pane(lm: &mut LayoutManager, direc: MoveDir) {
+    lm.move_focus(direc);
+}
+
+pub fn change_pane(lm: &mut LayoutManager, id: usize) -> Result<(), LayoutError> {
+    if !lm.contain_id(id) {
+        return Err(LayoutError::IdNotFound);
+    }
+    lm.current_layout = id;
+    Ok(())
+}
+
+pub fn add_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
+    let id = bm.add_new_buffer("Untitled");
+    lm.change_current_buffer_id(id)?;
+    Ok(())
+}
+
+pub fn add_new_buffer_from_path(bm: &mut BufferManager, lm: &mut LayoutManager, p: &str) -> Result<(), LayoutError> {
+    let id = bm.add_new_buffer_from_path(p)?;
+    lm.change_current_buffer_id(id)?;
     Ok(())
 }
 

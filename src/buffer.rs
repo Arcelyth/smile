@@ -195,84 +195,6 @@ impl Buffer {
         Ok(())
     }
 
-//    pub fn mv_cursor_right(&mut self) {
-//        let line = &self.content[self.cursor_pos.1];
-//        let char_count = get_line_len(line);
-//        let cur_pos = &mut self.cursor_pos;
-//
-//        if cur_pos.0 < char_count {
-//            cur_pos.0 += 1;
-//        } else if cur_pos.1 < self.content.len() - 1 {
-//            cur_pos.1 += 1;
-//            cur_pos.0 = 0;
-//        }
-//    }
-//
-//    pub fn mv_cursor_left(&mut self) {
-//        if self.cursor_pos.0 > 0 {
-//            self.cursor_pos.0 -= 1;
-//        } else if self.cursor_pos.1 > 0 {
-//            self.cursor_pos.1 -= 1;
-//            self.cursor_pos.0 = get_line_len(&self.content[self.cursor_pos.1])
-//        }
-//    }
-//
-//    pub fn mv_cursor_up(&mut self) {
-//        if self.cursor_pos.1 > 0 {
-//            self.cursor_pos.1 -= 1;
-//            self.cursor_pos.0 = self
-//                .cursor_pos
-//                .0
-//                .min(get_line_len(&self.content[self.cursor_pos.1]));
-//        }
-//    }
-//
-//    pub fn mv_cursor_down(&mut self) {
-//        if self.cursor_pos.1 < self.content.len() - 1 {
-//            self.cursor_pos.1 += 1;
-//            self.cursor_pos.0 = self
-//                .cursor_pos
-//                .0
-//                .min(get_line_len(&self.content[self.cursor_pos.1]));
-//        } else {
-//            self.content.push(String::new());
-//            self.cursor_pos.1 += 1;
-//            self.cursor_pos.0 = 0;
-//            self.handle_change();
-//        }
-//    }
-
-//    pub fn handle_backspace(&mut self) {
-//        let (x, y) = self.cursor_pos;
-//        if x > 0 {
-//            let line = &mut self.content[y];
-//            let byte_idx = char_to_byte_idx(line, x - 1);
-//            line.remove(byte_idx);
-//            self.cursor_pos.0 -= 1;
-//        } else if y > 0 {
-//            let current_line = self.content.remove(y);
-//            let prev_line = &mut self.content[y - 1];
-//            let prev_char_len = get_line_len(prev_line);
-//
-//            prev_line.push_str(&current_line);
-//            self.cursor_pos.1 -= 1;
-//            self.cursor_pos.0 = prev_char_len;
-//        }
-//        self.handle_change();
-//    }
-//
-//    pub fn handle_enter(&mut self) {
-//        let (x, y) = self.cursor_pos;
-//        let byte_idx = char_to_byte_idx(&self.content[y], x);
-//
-//        let next_line_content = self.content[y].split_off(byte_idx);
-//        self.content.insert(y + 1, next_line_content);
-//
-//        self.cursor_pos.1 += 1;
-//        self.cursor_pos.0 = 0;
-//        self.handle_change();
-//    }
-
     // change saved to false and add new content to history
     pub fn handle_change(&mut self) {
         self.saved = false;
@@ -286,35 +208,6 @@ impl Buffer {
         self.history.push(v);
         self.history_ptr += 1;
     }
-
-//    pub fn update_scroll(&mut self, viewport_height: usize, viewport_width: usize) {
-//        let thres = self.scroll_thres;
-//        let total_lines = self.content.len();
-//        let (x, y) = &mut self.cursor_pos;
-//        let width = self.content[*y].len();
-//        if *y >= total_lines {
-//            *y = total_lines.saturating_sub(1);
-//        }
-//
-//        if *y >= (self.scroll_offset.1 + viewport_height).saturating_sub(thres.1) {
-//            self.scroll_offset.1 = *y + thres.1 - viewport_height + 1;
-//        }
-//
-//        if *y < self.scroll_offset.1 {
-//            self.scroll_offset.1 = *y;
-//        }
-//
-//        if *x >= width + 1 {
-//            *x = width.saturating_sub(1);
-//        }
-//
-//        if *x >= (self.scroll_offset.0 + viewport_width).saturating_sub(thres.0) {
-//            self.scroll_offset.0 = *x + thres.0 - viewport_width + 1;
-//        }
-//        if *x < self.scroll_offset.0 {
-//            self.scroll_offset.0 = *x;
-//        }
-//    }
 
     pub fn get_visual_width_upto(&self, line_idx: usize, char_idx: usize) -> usize {
         let line = &self.content[line_idx];
@@ -346,16 +239,6 @@ impl Buffer {
         Ok(())
     }
 
-//    pub fn check_cursor_pos(&mut self) {
-//        let (px, py) = &mut self.cursor_pos;
-//        if *py >= self.content.len() {
-//            *py = self.content.len() - 1;
-//        }
-//        if *px > get_line_len(&self.content[*py]) {
-//            *px = get_line_len(&self.content[*py]);
-//        }
-//    }
-
     pub fn revoke(&mut self) {
         self.history_ptr = if self.history_ptr <= 0 {
             0
@@ -365,13 +248,6 @@ impl Buffer {
         self.content = arc_vec_to_string(self.history[self.history_ptr].clone());
     }
 
-//    pub fn mv_cursor_tail(&mut self) {
-//        self.cursor_pos.0 = get_line_len(&self.content[self.cursor_pos.1]);
-//    }
-//
-//    pub fn mv_cursor_head(&mut self) {
-//        self.cursor_pos.0 = 0;
-//    }
 }
 
 pub struct BufferManager {
