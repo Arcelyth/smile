@@ -1,6 +1,7 @@
 use super::tree::*;
 use crate::buffer::*;
 use crate::error::*;
+use crate::op::EditOp;
 use crate::utils::{char_to_byte_idx, get_line_len, overlap};
 use ratatui::layout::Rect;
 use std::collections::HashMap;
@@ -204,6 +205,7 @@ impl LayoutManager {
     }
 
     pub fn mv_cursor_right(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
+        let freemod = false;
         let pane = self
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
@@ -227,7 +229,7 @@ impl LayoutManager {
 
         if x < line_len {
             cursor_pos.0 += 1;
-        } else if y + 1 < buf.content.len() {
+        } else if y + 1 < buf.content.len() && freemod {
             cursor_pos.1 += 1;
             cursor_pos.0 = 0;
         }
@@ -286,6 +288,8 @@ impl LayoutManager {
     }
 
     pub fn mv_cursor_down(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
+        // press down can add new line
+        let freemod = false;
         let pane = self
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
@@ -304,11 +308,16 @@ impl LayoutManager {
         if cursor_pos.1 + 1 < buf.content.len() {
             cursor_pos.1 += 1;
             cursor_pos.0 = cursor_pos.0.min(get_line_len(&buf.content[cursor_pos.1]));
-        } else {
-            buf.content.push(String::new());
+        } else if freemod {
             cursor_pos.1 += 1;
             cursor_pos.0 = 0;
-            buf.handle_change();
+            buf.apply_op(
+                EditOp::InsertLine {
+                    y: cursor_pos.1,
+                    text: "".into(),
+                },
+                true,
+            )?;
         }
 
         Ok(())
@@ -352,6 +361,43 @@ impl LayoutManager {
         Ok(())
     }
 
+    //    pub fn handle_backspace(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
+    //        let pane = self
+    //            .get_current_pane_mut()
+    //            .ok_or(LayoutError::PaneNotFound)?;
+    //
+    //        let (cursor_pos, buffer_id) = match pane {
+    //            LayoutNode::Pane {
+    //                cursor_pos,
+    //                buffer_id,
+    //                ..
+    //            } => (cursor_pos, *buffer_id),
+    //            _ => return Err(LayoutError::NotPane),
+    //        };
+    //
+    //        let buf = buf_m.get_buffer_mut(buffer_id)?;
+    //
+    //        let (x, y) = *cursor_pos;
+    //
+    //        if x > 0 {
+    //            let line = &mut buf.content[y];
+    //            let byte_idx = char_to_byte_idx(line, x - 1);
+    //            line.remove(byte_idx);
+    //            buf.delete_content_at()
+    //            cursor_pos.0 -= 1;
+    //        } else if y > 0 {
+    //            let current = buf.content.remove(y);
+    //            let prev = &mut buf.content[y - 1];
+    //            let prev_len = get_line_len(prev);
+    //
+    //            prev.push_str(&current);
+    //            cursor_pos.1 -= 1;
+    //            cursor_pos.0 = prev_len;
+    //        }
+    //
+    //        Ok(())
+    //    }
+
     pub fn handle_backspace(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
         let pane = self
             .get_current_pane_mut()
@@ -367,25 +413,34 @@ impl LayoutManager {
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
-
         let (x, y) = *cursor_pos;
 
         if x > 0 {
-            let line = &mut buf.content[y];
-            let byte_idx = char_to_byte_idx(line, x - 1);
-            line.remove(byte_idx);
+            let del_str = &buf.content[y][x - 1..x];
+            buf.apply_op(
+                EditOp::Delete {
+                    pos: (x - 1, y),
+                    len: 1,
+                    text: del_str.into(),
+                },
+                true,
+            )?;
             cursor_pos.0 -= 1;
         } else if y > 0 {
-            let current = buf.content.remove(y);
-            let prev = &mut buf.content[y - 1];
-            let prev_len = get_line_len(prev);
-
-            prev.push_str(&current);
+            let prev_len = get_line_len(&buf.content[y - 1]);
+            let del_str = &buf.content[prev_len][x - 1..x];
+            buf.apply_op(
+                EditOp::Delete {
+                    pos: (prev_len, y - 1),
+                    len: 1,
+                    text: del_str.into(),
+                },
+                true,
+            )?;
             cursor_pos.1 -= 1;
             cursor_pos.0 = prev_len;
         }
 
-        buf.handle_change();
         Ok(())
     }
 
@@ -404,19 +459,50 @@ impl LayoutManager {
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
-
         let (x, y) = *cursor_pos;
+
         let byte_idx = char_to_byte_idx(&buf.content[y], x);
-
         let next_line = buf.content[y].split_off(byte_idx);
-        buf.content.insert(y + 1, next_line);
-
+        buf.apply_op(
+            EditOp::InsertLine {
+                y: y + 1,
+                text: next_line.into(),
+            },
+            true,
+        )?;
         cursor_pos.1 += 1;
         cursor_pos.0 = 0;
 
-        buf.handle_change();
         Ok(())
     }
+    //    pub fn handle_enter(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
+    //        let pane = self
+    //            .get_current_pane_mut()
+    //            .ok_or(LayoutError::PaneNotFound)?;
+    //
+    //        let (cursor_pos, buffer_id) = match pane {
+    //            LayoutNode::Pane {
+    //                cursor_pos,
+    //                buffer_id,
+    //                ..
+    //            } => (cursor_pos, *buffer_id),
+    //            _ => return Err(LayoutError::NotPane),
+    //        };
+    //
+    //        let buf = buf_m.get_buffer_mut(buffer_id)?;
+    //
+    //        let (x, y) = *cursor_pos;
+    //        let byte_idx = char_to_byte_idx(&buf.content[y], x);
+    //
+    //        let next_line = buf.content[y].split_off(byte_idx);
+    //        buf.content.insert(y + 1, next_line);
+    //
+    //        cursor_pos.1 += 1;
+    //        cursor_pos.0 = 0;
+    //
+    //        buf.handle_change();
+    //        Ok(())
+    //    }
 }
 
 pub fn update_scroll(

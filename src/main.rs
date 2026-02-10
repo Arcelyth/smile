@@ -28,9 +28,11 @@ use cli::Args;
 mod utils;
 
 mod command;
+use command::instructions::*;
 use command::*;
 
 mod layout;
+use layout::layout_manager::MoveDir;
 
 fn main() -> Result<()> {
     // setup terminal
@@ -71,18 +73,16 @@ where
 {
     loop {
         // todo: error handle
-        terminal.draw(|f| {
-            match ui(f, app) {
-                Ok(_) => {}
-                Err(e) => match e {
-                    RenderError::LayoutErr(LayoutError::NoNode) => {
-                        app.should_exit = true;
-                    }
-                    error => {
-                        println!("{:?}", error)
-                    }
+        terminal.draw(|f| match ui(f, app) {
+            Ok(_) => {}
+            Err(e) => match e {
+                RenderError::LayoutErr(LayoutError::NoNode) => {
+                    app.should_exit = true;
                 }
-            }
+                error => {
+                    println!("{:?}", error)
+                }
+            },
         })?;
 
         if app.should_exit {
@@ -139,14 +139,31 @@ where
                         (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                             app.current_screen = Screen::Command;
                         }
+                        // move to the left pane
+                        (KeyModifiers::CONTROL, KeyCode::Left) => {
+                            move_focus_in_pane(layout_m, MoveDir::Left);
+                        }
+                        // move to the right pane
+                        (KeyModifiers::CONTROL, KeyCode::Right) => {
+                            move_focus_in_pane(layout_m, MoveDir::Right);
+                        }
+                        // move to the up pane
+                        (KeyModifiers::CONTROL, KeyCode::Up) => {
+                            move_focus_in_pane(layout_m, MoveDir::Up);
+                        }
+                        // move to the down pane
+                        (KeyModifiers::CONTROL, KeyCode::Down) => {
+                            move_focus_in_pane(layout_m, MoveDir::Down);
+                        }
 
                         (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
                         (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
                         (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
                         (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
-                        (KeyModifiers::NONE, KeyCode::Char(ch)) => {
+                        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(ch)) => {
                             if let Ok(_) =
-                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
+                                cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::InsertText(ch.to_string().into()))     
+//                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
                             {
                                 mv_cursor_right(buffer_m, layout_m);
                             }

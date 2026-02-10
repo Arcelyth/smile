@@ -1,13 +1,18 @@
 #![allow(dead_code)]
-use crate::app::{App, Screen};
+use crate::app::Screen;
 use crate::buffer::BufferManager;
 use crate::error::*;
 use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
+use crate::op::EditOp;
 use crate::utils::*;
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+pub mod instructions;
+use crate::instructions::Instruction;
+pub mod op;
 
 #[derive(Debug, Copy, Clone)]
 pub enum KaoMoJi {
@@ -197,7 +202,7 @@ impl KaoCo {
                     add_new_buffer(buf_m, lm)?;
                 }
                 s if s.starts_with("nbp:") => {
-                    let path = &s[4..]; 
+                    let path = &s[4..];
                     add_new_buffer_from_path(buf_m, lm, path)?;
                 }
                 "sv" => {
@@ -234,6 +239,33 @@ impl KaoCo {
         }
         self.status = CmdStatus::Success;
         Ok(true)
+    }
+
+    pub fn handle_instructions(
+        &mut self,
+        buf_m: &mut BufferManager,
+        lm: &mut LayoutManager,
+        inst: Instruction,
+    ) -> Result<(), LayoutError> {
+        let show = match inst {
+            Instruction::InsertText(str) => {
+                add_content_at(buf_m, lm, &str)?;
+                "InsertText"
+            }
+            Instruction::DeleteText(len) => {
+                handle_backspace(buf_m, lm);
+                "DeleteText"
+            }
+            Instruction::InsertLine => {
+                handle_enter(buf_m, lm);
+                "InsertLine"
+            }
+            Instruction::DeleteLine=> {
+
+                "DeleteLine"
+            }
+        };
+        Ok(())
     }
 
     pub fn ask_and_save(&mut self) {
@@ -296,7 +328,15 @@ pub fn add_content_at(
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
-    buf.add_content_at(add_str, *cursor_pos)?;
+    buf.apply_op(
+        EditOp::Insert {
+            pos: *cursor_pos,
+            text: add_str.into(),
+            len: add_str.len(),
+        },
+        true,
+    )?;
+
     Ok(())
 }
 
@@ -416,7 +456,11 @@ pub fn add_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<
     Ok(())
 }
 
-pub fn add_new_buffer_from_path(bm: &mut BufferManager, lm: &mut LayoutManager, p: &str) -> Result<(), LayoutError> {
+pub fn add_new_buffer_from_path(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+    p: &str,
+) -> Result<(), LayoutError> {
     let id = bm.add_new_buffer_from_path(p)?;
     lm.change_current_buffer_id(id)?;
     Ok(())
