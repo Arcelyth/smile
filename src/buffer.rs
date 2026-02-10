@@ -1,8 +1,9 @@
 #![allow(dead_code)]
+use crate::command::op::*;
 use crate::error::*;
 use crate::utils::*;
-use std::collections::HashMap;
 use color_eyre::Result;
+use std::collections::HashMap;
 use std::fs::{self, File, read_to_string};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use unicode_width::UnicodeWidthStr;
 pub struct Buffer {
     pub id: usize,
     pub content: Vec<String>,
+    pub op_stack: Vec<EditOp>,
     pub history: Vec<Vec<Arc<str>>>,
     pub history_ptr: usize,
     pub name: Arc<str>,
@@ -26,6 +28,7 @@ impl Buffer {
         Self {
             id,
             content: vec![String::new()],
+            op_stack: vec![],
             history: vec![vec![String::new().into()]],
             history_ptr: 0,
             name: Arc::from(name),
@@ -40,6 +43,7 @@ impl Buffer {
         Self {
             id,
             content: c,
+            op_stack: vec![],
             history: vec![v],
             history_ptr: 0,
             name: Arc::from(name),
@@ -74,6 +78,7 @@ impl Buffer {
         let mut s = Self {
             id,
             content: content.clone(),
+            op_stack: vec![],
             history: vec![v],
             history_ptr: 0,
             name: Arc::from(name),
@@ -93,7 +98,11 @@ impl Buffer {
         self.content.len()
     }
 
-    pub fn delete_content_at(&mut self, len_in_chars: usize, cursor_pos: (usize, usize)) -> Result<(), BufferError> {
+    pub fn delete_content_at(
+        &mut self,
+        len_in_chars: usize,
+        cursor_pos: (usize, usize),
+    ) -> Result<String, BufferError> {
         let (x, y) = cursor_pos;
         if y >= self.content.len() {
             return Err(BufferError::InvalidPosition);
@@ -102,17 +111,17 @@ impl Buffer {
         let line = &mut self.content[y];
         let start_byte = char_to_byte_idx(line, x);
         let end_byte = char_to_byte_idx(line, x + len_in_chars);
+        let deleted = line[start_byte..end_byte].to_string();
 
         line.drain(start_byte..end_byte);
-        self.handle_change();
-        Ok(())
+        Ok(deleted)
     }
 
     pub fn change_content_at(
         &mut self,
         len_in_chars: usize,
         replace_str: &str,
-        cursor_pos: (usize, usize)
+        cursor_pos: (usize, usize),
     ) -> Result<(), BufferError> {
         let (x, y) = cursor_pos;
         if y >= self.content.len() {
@@ -124,11 +133,14 @@ impl Buffer {
         let end_byte = char_to_byte_idx(line, x + len_in_chars);
 
         line.replace_range(start_byte..end_byte, replace_str);
-        self.handle_change();
         Ok(())
     }
 
-    pub fn add_content_at(&mut self, add_str: &str, cursor_pos: (usize, usize)) -> Result<(), BufferError> {
+    pub fn add_content_at(
+        &mut self,
+        add_str: &str,
+        cursor_pos: (usize, usize),
+    ) -> Result<(), BufferError> {
         let (x, y) = cursor_pos;
         if y >= self.content.len() {
             return Err(BufferError::InvalidPosition);
@@ -136,28 +148,23 @@ impl Buffer {
 
         let byte_idx = char_to_byte_idx(&self.content[y], x);
         self.content[y].insert_str(byte_idx, add_str);
-        self.handle_change();
         Ok(())
     }
 
-    pub fn delete_line(&mut self, cursor_pos: (usize, usize)) -> Result<String, BufferError> {
-        let y = cursor_pos.1;
+    pub fn delete_line(&mut self, y: usize) -> Result<String, BufferError> {
         if self.get_line_count() <= y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        self.handle_change();
         Ok(self.content.remove(y))
     }
 
-    pub fn add_new_line(&mut self, cursor_pos: (usize, usize)) -> Result<(), BufferError> {
-        let y = cursor_pos.1;
-        if self.get_line_count() <= y {
+    pub fn add_new_line(&mut self, y: usize, str: &str) -> Result<(), BufferError> {
+        if self.get_line_count() < y {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        self.handle_change();
-        Ok(self.content.insert(y, String::new()))
+        Ok(self.content.insert(y , String::from(str)))
     }
 
     pub fn save(&mut self) -> io::Result<()> {
@@ -192,12 +199,6 @@ impl Buffer {
             println!("error: {:?}", e);
         };
         self.saved = true;
-        Ok(())
-    }
-
-    // change saved to false and add new content to history
-    pub fn handle_change(&mut self) {
-        self.saved = false;
         self.history.truncate(self.history_ptr + 1);
         let v: Vec<Arc<str>> = self
             .content
@@ -207,6 +208,13 @@ impl Buffer {
             .collect();
         self.history.push(v);
         self.history_ptr += 1;
+        Ok(())
+    }
+
+    // change saved to false and add new content to history
+    pub fn handle_change(&mut self, op: EditOp) {
+        self.saved = false;
+        self.op_stack.push(op);
     }
 
     pub fn get_visual_width_upto(&self, line_idx: usize, char_idx: usize) -> usize {
@@ -239,15 +247,32 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn revoke(&mut self) {
-        self.history_ptr = if self.history_ptr <= 0 {
-            0
-        } else {
-            self.history_ptr - 1
-        };
-        self.content = arc_vec_to_string(self.history[self.history_ptr].clone());
+    pub fn revoke(&mut self) -> Result<(), LayoutError> {
+        let op = if let Some(o) = self.op_stack.pop() { o } else {return Ok(())};
+        self.apply_op(op.inverse(), false)?;
+        Ok(())
     }
 
+    pub fn apply_op(&mut self, op: EditOp, add: bool) -> Result<(), BufferError> {
+        match op.clone() {
+            EditOp::Insert { pos, text, .. } => {
+                self.add_content_at(&text, pos)?;
+            }
+            EditOp::Delete { pos, len, .. } => {
+                self.delete_content_at(len, pos)?;
+            }
+            EditOp::InsertLine { y, text } => {
+                self.add_new_line(y, &text)?;
+            }
+            EditOp::DeleteLine { y, .. } => {
+                self.delete_line(y)?;
+            }
+        };
+        if add {
+            self.handle_change(op);
+        }
+        Ok(())
+    }
 }
 
 pub struct BufferManager {
@@ -271,23 +296,22 @@ impl BufferManager {
         old_id
     }
 
-    pub fn add_new_buffer_from_path<P: AsRef<Path>>(&mut self, path: P) -> Result<usize, BufferError> {
+    pub fn add_new_buffer_from_path<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<usize, BufferError> {
         let old_id = self.id_counter;
         let new_buffer = Buffer::from_file(path, old_id)?;
         self.buffers.insert(old_id, new_buffer);
         self.id_counter += 1;
         Ok(old_id)
-    } 
+    }
 
     pub fn get_buffer(&self, id: usize) -> Result<&Buffer, BufferError> {
-        self.buffers
-            .get(&id)
-            .ok_or(BufferError::InvalidId)
+        self.buffers.get(&id).ok_or(BufferError::InvalidId)
     }
 
     pub fn get_buffer_mut(&mut self, id: usize) -> Result<&mut Buffer, BufferError> {
-        self.buffers
-            .get_mut(&id)
-            .ok_or(BufferError::InvalidId)
+        self.buffers.get_mut(&id).ok_or(BufferError::InvalidId)
     }
 }

@@ -283,16 +283,12 @@ pub fn render_buffer(
     current_layout: usize,
     pane_id: usize,
 ) -> Result<Rect, LayoutError> {
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)])
-        .split(rect);
 
     // editor frame include editor and status bar
     let editor_frame = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(2)])
-        .split(root[0]);
+        .split(rect);
 
     // show the editor
     let editor_main = Layout::default()
