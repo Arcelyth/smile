@@ -6,9 +6,12 @@ use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
 use crate::op::EditOp;
 use crate::utils::*;
+use crate::popup::*;
 use std::sync::Arc;
+use std::time::Duration;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+use ratatui::style::Color;
 
 pub mod instructions;
 use crate::instructions::Instruction;
@@ -163,6 +166,7 @@ impl KaoCo {
         buf_m: &mut BufferManager,
         lm: &mut LayoutManager,
         cur_screen: &mut Screen,
+        popups: &mut Popups,
     ) -> Result<bool, LayoutError> {
         let buf = lm.get_current_buffer_mut(buf_m)?;
         match self.status {
@@ -230,6 +234,14 @@ impl KaoCo {
                 "change pane" => {
                     change_pane(lm, 1)?;
                 }
+                "hi" => {
+                    popups.push(Popup::new(
+                        "Helloenhirestaintahsirtarhneitasrneihtarenihtsarniehtsariehtareitsaeihtasn",
+                        Duration::from_secs(3),
+                        (30, 3),
+                        Color::Rgb(101, 247, 186),
+                    ));
+                }
                 _ => {
                     self.say = "Unknown command".into();
                     self.status = CmdStatus::Failed;
@@ -263,7 +275,7 @@ impl KaoCo {
             Instruction::DeleteLine => {
                 delete_line(buf_m, lm)?;
                 "DeleteLine"
-            },
+            }
         };
         self.say = show.into();
         Ok(())
@@ -346,10 +358,13 @@ pub fn delete_line(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(),
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
-    buf.apply_op(EditOp::DeleteLine {
-        y: *y,
-        text: buf.content[*y].clone().into()
-    }, true)?;
+    buf.apply_op(
+        EditOp::DeleteLine {
+            y: *y,
+            text: buf.content[*y].clone().into(),
+        },
+        true,
+    )?;
     Ok(())
 }
 

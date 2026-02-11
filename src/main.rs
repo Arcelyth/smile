@@ -89,6 +89,7 @@ where
         if app.should_exit {
             break Ok(());
         }
+        app.popups.update();
         let cur_cmd = &mut app.command;
         let cur_screen = &mut app.current_screen;
         let layout_m = &mut app.layout_manager;
@@ -204,7 +205,7 @@ where
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
                             let ret = cur_cmd
-                                .handle_command(buffer_m, layout_m, cur_screen)
+                                .handle_command(buffer_m, layout_m, cur_screen, &mut app.popups)
                                 .unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor
