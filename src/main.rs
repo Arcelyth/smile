@@ -14,7 +14,6 @@ mod app;
 use app::{App, Screen};
 
 mod buffer;
-use buffer::*;
 
 mod ui;
 use ui::ui;
@@ -33,6 +32,8 @@ use command::*;
 
 mod layout;
 use layout::layout_manager::MoveDir;
+
+mod popup;
 
 fn main() -> Result<()> {
     // setup terminal
@@ -88,6 +89,7 @@ where
         if app.should_exit {
             break Ok(());
         }
+        app.popups.update();
         let cur_cmd = &mut app.command;
         let cur_screen = &mut app.current_screen;
         let layout_m = &mut app.layout_manager;
@@ -125,7 +127,7 @@ where
                         }
                         // revoke
                         (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
-                            revoke(buffer_m, layout_m);
+                            revoke(buffer_m, layout_m)?;
                         }
                         // move cursor to the head of line
                         (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
@@ -138,6 +140,11 @@ where
                         // active the command line
                         (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                             app.current_screen = Screen::Command;
+                            cur_cmd.clean_all();
+                        }
+                        // delete current line
+                        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::DeleteLine)?;
                         }
                         // move to the left pane
                         (KeyModifiers::CONTROL, KeyCode::Left) => {
@@ -169,10 +176,10 @@ where
                             }
                         }
                         (KeyModifiers::NONE, KeyCode::Enter) => {
-                            handle_enter(buffer_m, layout_m);
+                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::InsertLine)?
                         }
                         (KeyModifiers::NONE, KeyCode::Backspace) => {
-                            handle_backspace(buffer_m, layout_m);
+                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::DeleteText(1))?;
                         }
                         _ => {}
                     }
@@ -198,7 +205,7 @@ where
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
                             let ret = cur_cmd
-                                .handle_command(buffer_m, layout_m, cur_screen)
+                                .handle_command(buffer_m, layout_m, cur_screen, &mut app.popups)
                                 .unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor

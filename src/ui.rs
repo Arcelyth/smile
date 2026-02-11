@@ -11,6 +11,7 @@ use crate::command::*;
 use crate::error::*;
 use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
+use crate::popup::Popups;
 use crate::utils::*;
 
 pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
@@ -141,6 +142,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
                 .block(command_line_block);
 
             frame.render_widget(command_line, command_line_frame[1]);
+
+            // show the popups 
+            render_popups(&app.popups, frame);
 
             // show the cursor
             match app.current_screen {
@@ -283,7 +287,6 @@ pub fn render_buffer(
     current_layout: usize,
     pane_id: usize,
 ) -> Result<Rect, LayoutError> {
-
     // editor frame include editor and status bar
     let editor_frame = Layout::default()
         .direction(Direction::Vertical)
@@ -447,6 +450,35 @@ pub fn render_buffer(
 
     frame.render_widget(status_last, status_bar_main[4]);
     return Ok(editor_main[1]);
+}
+
+pub fn render_popups(popups: &Popups, frame: &mut Frame) {
+    let area = frame.area();
+
+    let mut offset_y = 0;
+
+    for popup in &popups.inner {
+        let (w, h) = popup.size;
+
+        let rect = if let Some((x, y)) = popup.position {
+            Rect::new(x as u16, y as u16, w as u16, h as u16)
+        } else {
+            let x = area.width.saturating_sub(w as u16);
+            let y = offset_y as u16;
+
+            offset_y += h; 
+
+            Rect::new(x, y, w as u16, h as u16)
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().fg(popup.color));
+
+        let paragraph = Paragraph::new(popup.content.to_string()).block(block);
+
+        frame.render_widget(paragraph, rect);
+    }
 }
 
 fn get_banner() -> String {

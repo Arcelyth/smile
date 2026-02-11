@@ -5,6 +5,7 @@ use crate::command::*;
 use crate::error::BufferError;
 use crate::error::*;
 use crate::layout::layout_manager::*;
+use crate::popup::Popups;
 
 #[derive(Debug)]
 pub enum Screen {
@@ -16,10 +17,12 @@ pub enum Screen {
 #[derive(Debug)]
 pub enum Mod {
     Input,
+    Visual,
     Commanding,
 }
 
 pub struct App {
+    pub popups: Popups,
     pub buf_manager: BufferManager,
     pub layout_manager: LayoutManager,
     pub command: KaoCo,
@@ -34,6 +37,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
+            popups: Popups::new(),
             buf_manager: BufferManager::new(),
             layout_manager: LayoutManager::new(),
             command: KaoCo::new(),
@@ -71,6 +75,7 @@ impl App {
 
     pub fn from(screen: Screen, buf_manager: BufferManager) -> Self {
         Self {
+            popups: Popups::new(),
             buf_manager,
             layout_manager: LayoutManager::new(),
             command: KaoCo::new(),

@@ -156,7 +156,11 @@ impl Buffer {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        Ok(self.content.remove(y))
+        let rm_str = self.content.remove(y);
+        if self.content.len() <= 0 {
+            self.content.push(String::new());
+        };
+        Ok(rm_str)
     }
 
     pub fn add_new_line(&mut self, y: usize, str: &str) -> Result<(), BufferError> {
