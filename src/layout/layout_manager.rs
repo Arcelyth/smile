@@ -5,7 +5,6 @@ use crate::op::EditOp;
 use crate::utils::{char_to_byte_idx, get_line_len, overlap};
 use ratatui::layout::Rect;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub struct LayoutManager {
     pub pane_rects: HashMap<usize, Rect>,
@@ -361,43 +360,6 @@ impl LayoutManager {
         Ok(())
     }
 
-    //    pub fn handle_backspace(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
-    //        let pane = self
-    //            .get_current_pane_mut()
-    //            .ok_or(LayoutError::PaneNotFound)?;
-    //
-    //        let (cursor_pos, buffer_id) = match pane {
-    //            LayoutNode::Pane {
-    //                cursor_pos,
-    //                buffer_id,
-    //                ..
-    //            } => (cursor_pos, *buffer_id),
-    //            _ => return Err(LayoutError::NotPane),
-    //        };
-    //
-    //        let buf = buf_m.get_buffer_mut(buffer_id)?;
-    //
-    //        let (x, y) = *cursor_pos;
-    //
-    //        if x > 0 {
-    //            let line = &mut buf.content[y];
-    //            let byte_idx = char_to_byte_idx(line, x - 1);
-    //            line.remove(byte_idx);
-    //            buf.delete_content_at()
-    //            cursor_pos.0 -= 1;
-    //        } else if y > 0 {
-    //            let current = buf.content.remove(y);
-    //            let prev = &mut buf.content[y - 1];
-    //            let prev_len = get_line_len(prev);
-    //
-    //            prev.push_str(&current);
-    //            cursor_pos.1 -= 1;
-    //            cursor_pos.0 = prev_len;
-    //        }
-    //
-    //        Ok(())
-    //    }
-
     pub fn handle_backspace(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
         let pane = self
             .get_current_pane_mut()
@@ -427,16 +389,24 @@ impl LayoutManager {
             )?;
             cursor_pos.0 -= 1;
         } else if y > 0 {
-            let prev_len = get_line_len(&buf.content[y - 1]);
-            let del_str = &buf.content[prev_len][x - 1..x];
-            buf.apply_op(
-                EditOp::Delete {
-                    pos: (prev_len, y - 1),
-                    len: 1,
-                    text: del_str.into(),
-                },
-                true,
-            )?;
+            let prev_line = &buf.content[y - 1];
+            let prev_len = get_line_len(prev_line);
+
+            if prev_len > 0 {
+                let start = char_to_byte_idx(prev_line, prev_len - 1);
+                let end = char_to_byte_idx(prev_line, prev_len);
+
+                let del_str = &prev_line[start..end];
+
+                buf.apply_op(
+                    EditOp::Delete {
+                        pos: (prev_len - 1, y - 1),
+                        len: 1,
+                        text: del_str.into(),
+                    },
+                    true,
+                )?;
+            }
             cursor_pos.1 -= 1;
             cursor_pos.0 = prev_len;
         }
@@ -475,34 +445,7 @@ impl LayoutManager {
 
         Ok(())
     }
-    //    pub fn handle_enter(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
-    //        let pane = self
-    //            .get_current_pane_mut()
-    //            .ok_or(LayoutError::PaneNotFound)?;
-    //
-    //        let (cursor_pos, buffer_id) = match pane {
-    //            LayoutNode::Pane {
-    //                cursor_pos,
-    //                buffer_id,
-    //                ..
-    //            } => (cursor_pos, *buffer_id),
-    //            _ => return Err(LayoutError::NotPane),
-    //        };
-    //
-    //        let buf = buf_m.get_buffer_mut(buffer_id)?;
-    //
-    //        let (x, y) = *cursor_pos;
-    //        let byte_idx = char_to_byte_idx(&buf.content[y], x);
-    //
-    //        let next_line = buf.content[y].split_off(byte_idx);
-    //        buf.content.insert(y + 1, next_line);
-    //
-    //        cursor_pos.1 += 1;
-    //        cursor_pos.0 = 0;
-    //
-    //        buf.handle_change();
-    //        Ok(())
-    //    }
+   
 }
 
 pub fn update_scroll(

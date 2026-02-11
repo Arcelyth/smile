@@ -179,7 +179,7 @@ impl KaoCo {
                     return Ok(false);
                 }
                 "revoke" => {
-                    buf.revoke();
+                    buf.revoke()?;
                 }
                 "head" => {
                     mv_cursor_head(lm);
@@ -253,18 +253,19 @@ impl KaoCo {
                 "InsertText"
             }
             Instruction::DeleteText(len) => {
-                handle_backspace(buf_m, lm);
+                lm.handle_backspace(buf_m);
                 "DeleteText"
             }
             Instruction::InsertLine => {
-                handle_enter(buf_m, lm);
+                lm.handle_enter(buf_m);
                 "InsertLine"
             }
-            Instruction::DeleteLine=> {
-
+            Instruction::DeleteLine => {
+                delete_line(buf_m, lm)?;
                 "DeleteLine"
-            }
+            },
         };
+        self.say = show.into();
         Ok(())
     }
 
@@ -303,14 +304,6 @@ pub fn mv_cursor_tail(bm: &mut BufferManager, lm: &mut LayoutManager) {
     lm.mv_cursor_tail(bm);
 }
 
-pub fn handle_backspace(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.handle_backspace(bm);
-}
-
-pub fn handle_enter(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.handle_enter(bm);
-}
-
 pub fn add_content_at(
     bm: &mut BufferManager,
     lm: &mut LayoutManager,
@@ -337,6 +330,26 @@ pub fn add_content_at(
         true,
     )?;
 
+    Ok(())
+}
+
+pub fn delete_line(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let ((_, y), buffer_id) = match pane {
+        LayoutNode::Pane {
+            cursor_pos,
+            buffer_id,
+            ..
+        } => (cursor_pos, *buffer_id),
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    let buf = bm.get_buffer_mut(buffer_id)?;
+    buf.apply_op(EditOp::DeleteLine {
+        y: *y,
+        text: buf.content[*y].clone().into()
+    }, true)?;
     Ok(())
 }
 
