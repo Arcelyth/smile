@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use std::collections::HashMap;
 use std::io::stdout;
 
-use crate::app::{App, Screen};
+use crate::app::{App, Screen, Mod};
 use crate::buffer::*;
 use crate::command::*;
 use crate::error::*;
@@ -80,6 +80,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
                 &app.command,
                 &mut layout_m.pane_rects,
                 layout_m.current_layout,
+                &app.current_mod,
             )?
             .ok_or(RenderError::RenderLayoutError)?;
 
@@ -209,6 +210,7 @@ pub fn render_layout(
     cmd: &KaoCo,
     pane_rects: &mut HashMap<usize, Rect>,
     current_layout: usize,
+    cur_mod: &Mod
 ) -> Result<Option<Rect>, RenderError> {
     match node {
         LayoutNode::Pane {
@@ -231,6 +233,7 @@ pub fn render_layout(
                 *buffer_id,
                 current_layout,
                 *id,
+                cur_mod,
             )?;
             pane_rects.insert(*id, area);
             if *id == current_layout {
@@ -264,8 +267,8 @@ pub fn render_layout(
                     .split(area),
             };
 
-            let res1 = render_layout(first, chunks[0], f, buf_m, cmd, pane_rects, current_layout)?;
-            let res2 = render_layout(second, chunks[1], f, buf_m, cmd, pane_rects, current_layout)?;
+            let res1 = render_layout(first, chunks[0], f, buf_m, cmd, pane_rects, current_layout, cur_mod)?;
+            let res2 = render_layout(second, chunks[1], f, buf_m, cmd, pane_rects, current_layout, cur_mod)?;
 
             if let Some(r) = res1 {
                 return Ok(Some(r));
@@ -290,6 +293,7 @@ pub fn render_buffer(
     buffer_id: usize,
     current_layout: usize,
     pane_id: usize,
+    cur_mod: &Mod,
 ) -> Result<Rect, LayoutError> {
     // editor frame include editor and status bar
     let editor_frame = Layout::default()
@@ -355,12 +359,19 @@ pub fn render_buffer(
         .border_style(Style::default().fg(border_color))
         .style(Style::default().fg(font_color));
 
-    let lines: Vec<Line> = buf.content.iter().map(|s| Line::from(s.as_str())).collect();
+//    let lines: Vec<Line> = buf.content.iter().map(|s| Line::from(s.as_str())).collect();
+
+    let lines = match cur_mod {
+        Mod::Visual(x, y) => render_visual(&buf.content, (*x, *y), *cursor_pos, ),
+        _ => buf.content.iter().map(|s| Line::from(s.as_str())).collect()
+    };
 
     let content = Paragraph::new(Text::from(lines))
         .block(editor_block)
         .scroll((scroll_offset.1 as u16, scroll_offset.0 as u16));
+    
 
+    // render the content
     frame.render_widget(content, editor_main[1]);
 
     // show the status bar
@@ -490,6 +501,57 @@ fn render_cursor(cursor: &Cursor) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+
+fn render_visual(
+    content: &Vec<String>,
+    start: (usize, usize),
+    end: (usize, usize),
+) -> Vec<Line> {
+    let ((sx, sy), (ex, ey)) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
+
+    let mut result = Vec::new();
+
+    for (y, line) in content.iter().enumerate() {
+        let mut spans = Vec::new();
+        let line_len = get_line_len(line);
+
+        for x in 0..line_len {
+            let byte_start = char_to_byte_idx(line, x);
+            let byte_end = char_to_byte_idx(line, x + 1);
+            let ch = &line[byte_start..byte_end];
+
+            let in_range = if y < sy || y > ey {
+                false
+            } else if sy == ey {
+                y == sy && x >= sx && x < ex
+            } else if y == sy {
+                x >= sx
+            } else if y == ey {
+                x < ex
+            } else {
+                true
+            };
+
+            if in_range {
+                spans.push(Span::styled(
+                    ch.to_string(),
+                    Style::default().bg(Color::Blue),
+                ));
+            } else {
+                spans.push(Span::raw(ch.to_string()));
+            }
+        }
+
+        result.push(Line::from(spans));
+    }
+
+    result
+}
+
 fn get_banner() -> String {
     r#"
 ███████╗███╗   ███╗██╗██╗     ███████╗
@@ -501,3 +563,5 @@ fn get_banner() -> String {
     "#
     .to_string()
 }
+
+

@@ -7,6 +7,7 @@ use crate::layout::tree::*;
 use crate::op::EditOp;
 use crate::utils::*;
 use crate::popup::*;
+use crate::app::Mod;
 use std::sync::Arc;
 use std::time::Duration;
 use unicode_segmentation::UnicodeSegmentation;
@@ -490,6 +491,24 @@ pub fn add_new_buffer_from_path(
     lm.change_current_buffer_id(id)?;
     Ok(())
 }
+
+pub fn enter_visual(
+    lm: &mut LayoutManager,
+    cur_mod: &mut Mod,
+) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let cursor = match pane {
+        LayoutNode::Pane {
+            cursor,
+            ..
+        } => cursor,
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    *cur_mod = Mod::Visual(cursor.pos.0, cursor.pos.1);
+    Ok(())
+} 
 
 pub fn kaomoji_to_text(kind: KaoMoJi) -> String {
     match kind {
