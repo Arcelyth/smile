@@ -17,7 +17,7 @@ pub enum Screen {
 #[derive(Debug)]
 pub enum Mod {
     Input,
-    Visual,
+    Visual(usize, usize),
     Commanding,
 }
 

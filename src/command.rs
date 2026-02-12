@@ -7,6 +7,7 @@ use crate::layout::tree::*;
 use crate::op::EditOp;
 use crate::utils::*;
 use crate::popup::*;
+use crate::app::Mod;
 use std::sync::Arc;
 use std::time::Duration;
 use unicode_segmentation::UnicodeSegmentation;
@@ -323,19 +324,19 @@ pub fn add_content_at(
 ) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
 
-    let (cursor_pos, buffer_id) = match pane {
+    let (cursor, buffer_id) = match pane {
         LayoutNode::Pane {
-            cursor_pos,
+            cursor,
             buffer_id,
             ..
-        } => (cursor_pos, *buffer_id),
+        } => (cursor, *buffer_id),
         _ => return Err(LayoutError::NotPane),
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
     buf.apply_op(
         EditOp::Insert {
-            pos: *cursor_pos,
+            pos: cursor.pos,
             text: add_str.into(),
             len: add_str.len(),
         },
@@ -350,18 +351,18 @@ pub fn delete_line(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(),
 
     let ((_, y), buffer_id) = match pane {
         LayoutNode::Pane {
-            cursor_pos,
+            cursor,
             buffer_id,
             ..
-        } => (cursor_pos, *buffer_id),
+        } => (cursor.pos, *buffer_id),
         _ => return Err(LayoutError::NotPane),
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
     buf.apply_op(
         EditOp::DeleteLine {
-            y: *y,
-            text: buf.content[*y].clone().into(),
+            y: y,
+            text: buf.content[y].clone().into(),
         },
         true,
     )?;
@@ -371,12 +372,11 @@ pub fn delete_line(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(),
 pub fn save(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
 
-    let (_cursor_pos, buffer_id) = match pane {
+    let buffer_id = match pane {
         LayoutNode::Pane {
-            cursor_pos,
             buffer_id,
             ..
-        } => (cursor_pos, *buffer_id),
+        } => *buffer_id,
         _ => return Err(LayoutError::NotPane),
     };
 
@@ -390,12 +390,11 @@ pub fn is_buffer_binding(
 ) -> Result<bool, LayoutError> {
     let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
 
-    let (_cursor_pos, buffer_id) = match pane {
+    let buffer_id = match pane {
         LayoutNode::Pane {
-            cursor_pos,
             buffer_id,
             ..
-        } => (cursor_pos, *buffer_id),
+        } => *buffer_id ,
         _ => return Err(LayoutError::NotPane),
     };
 
@@ -407,12 +406,11 @@ pub fn is_buffer_binding(
 pub fn revoke(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
 
-    let (_cursor_pos, buffer_id) = match pane {
+    let  buffer_id= match pane {
         LayoutNode::Pane {
-            cursor_pos,
             buffer_id,
             ..
-        } => (cursor_pos, *buffer_id),
+        } => *buffer_id,
         _ => return Err(LayoutError::NotPane),
     };
 
@@ -493,6 +491,24 @@ pub fn add_new_buffer_from_path(
     lm.change_current_buffer_id(id)?;
     Ok(())
 }
+
+pub fn enter_visual(
+    lm: &mut LayoutManager,
+    cur_mod: &mut Mod,
+) -> Result<(), LayoutError> {
+    let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
+
+    let cursor = match pane {
+        LayoutNode::Pane {
+            cursor,
+            ..
+        } => cursor,
+        _ => return Err(LayoutError::NotPane),
+    };
+
+    *cur_mod = Mod::Visual(cursor.pos.0, cursor.pos.1);
+    Ok(())
+} 
 
 pub fn kaomoji_to_text(kind: KaoMoJi) -> String {
     match kind {

@@ -2,6 +2,7 @@ use clap::Parser;
 use color_eyre::eyre::Result;
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
+use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::crossterm::event::DisableMouseCapture;
 use ratatui::crossterm::event::{self, KeyCode, KeyEventKind};
 use ratatui::crossterm::event::{EnableMouseCapture, Event, KeyModifiers};
@@ -11,7 +12,7 @@ use ratatui::crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use std::io;
 
 mod app;
-use app::{App, Screen};
+use app::{App, Mod, Screen};
 
 mod buffer;
 
@@ -33,6 +34,7 @@ use command::*;
 mod layout;
 use layout::layout_manager::MoveDir;
 
+mod cursor;
 mod popup;
 
 fn main() -> Result<()> {
@@ -61,7 +63,8 @@ fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
+        DisableMouseCapture,
+        SetCursorStyle::DefaultUserShape
     )?;
     terminal.show_cursor()?;
 
@@ -110,78 +113,109 @@ where
                     _ => {}
                 },
                 Screen::Editor => {
-                    match (key.modifiers, key.code) {
-                        // exit
-                        (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
-                            return Ok(());
-                        }
-                        // save file
-                        (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
-                            // todo: error handle
-                            if is_buffer_binding(buffer_m, layout_m).unwrap() {
-                                let _ = save(buffer_m, layout_m);
-                            } else {
-                                app.current_screen = Screen::Command;
-                                let _ = cur_cmd.ask_and_save();
+                    match app.current_mod {
+                        Mod::Visual(_, _) => match (key.modifiers, key.code) {
+                            (KeyModifiers::NONE, KeyCode::Esc) => {
+                                app.current_mod = Mod::Input;
+                            }
+                            (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
+                            (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
+                            (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
+                            (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
+                            _ => {}
+                        },
+                        _ => {
+                            match (key.modifiers, key.code) {
+                                // exit
+                                (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
+                                    return Ok(());
+                                }
+                                // save file
+                                (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                                    // todo: error handle
+                                    if is_buffer_binding(buffer_m, layout_m).unwrap() {
+                                        let _ = save(buffer_m, layout_m);
+                                    } else {
+                                        app.current_screen = Screen::Command;
+                                        let _ = cur_cmd.ask_and_save();
+                                    }
+                                }
+                                // revoke
+                                (KeyModifiers::CONTROL, KeyCode::Char('z')) => {
+                                    revoke(buffer_m, layout_m)?;
+                                }
+                                // move cursor to the head of line
+                                (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
+                                    mv_cursor_head(layout_m);
+                                }
+                                // move cursor to the end of line
+                                (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
+                                    mv_cursor_tail(buffer_m, layout_m);
+                                }
+                                // active the command line
+                                (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
+                                    app.current_screen = Screen::Command;
+                                    cur_cmd.clean_all();
+                                }
+                                // delete current line
+                                (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                                    cur_cmd.handle_instructions(
+                                        buffer_m,
+                                        layout_m,
+                                        Instruction::DeleteLine,
+                                    )?;
+                                }
+                                // move to the left pane
+                                (KeyModifiers::CONTROL, KeyCode::Left) => {
+                                    move_focus_in_pane(layout_m, MoveDir::Left);
+                                }
+                                // move to the right pane
+                                (KeyModifiers::CONTROL, KeyCode::Right) => {
+                                    move_focus_in_pane(layout_m, MoveDir::Right);
+                                }
+                                // move to the up pane
+                                (KeyModifiers::CONTROL, KeyCode::Up) => {
+                                    move_focus_in_pane(layout_m, MoveDir::Up);
+                                }
+                                // move to the down pane
+                                (KeyModifiers::CONTROL, KeyCode::Down) => {
+                                    move_focus_in_pane(layout_m, MoveDir::Down);
+                                }
+                                // change to visual mode
+                                (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
+                                    enter_visual(layout_m, &mut app.current_mod)?;
+                                }
+                                (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
+                                (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
+                                (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
+                                (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
+                                (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(ch)) => {
+                                    if let Ok(_) = cur_cmd.handle_instructions(
+                                        buffer_m,
+                                        layout_m,
+                                        Instruction::InsertText(ch.to_string().into()),
+                                    )
+                                    //                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
+                                    {
+                                        mv_cursor_right(buffer_m, layout_m);
+                                    }
+                                }
+                                (KeyModifiers::NONE, KeyCode::Enter) => cur_cmd
+                                    .handle_instructions(
+                                        buffer_m,
+                                        layout_m,
+                                        Instruction::InsertLine,
+                                    )?,
+                                (KeyModifiers::NONE, KeyCode::Backspace) => {
+                                    cur_cmd.handle_instructions(
+                                        buffer_m,
+                                        layout_m,
+                                        Instruction::DeleteText(1),
+                                    )?;
+                                }
+                                _ => {}
                             }
                         }
-                        // revoke
-                        (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
-                            revoke(buffer_m, layout_m)?;
-                        }
-                        // move cursor to the head of line
-                        (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
-                            mv_cursor_head(layout_m);
-                        }
-                        // move cursor to the end of line
-                        (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
-                            mv_cursor_tail(buffer_m, layout_m);
-                        }
-                        // active the command line
-                        (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
-                            app.current_screen = Screen::Command;
-                            cur_cmd.clean_all();
-                        }
-                        // delete current line
-                        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::DeleteLine)?;
-                        }
-                        // move to the left pane
-                        (KeyModifiers::CONTROL, KeyCode::Left) => {
-                            move_focus_in_pane(layout_m, MoveDir::Left);
-                        }
-                        // move to the right pane
-                        (KeyModifiers::CONTROL, KeyCode::Right) => {
-                            move_focus_in_pane(layout_m, MoveDir::Right);
-                        }
-                        // move to the up pane
-                        (KeyModifiers::CONTROL, KeyCode::Up) => {
-                            move_focus_in_pane(layout_m, MoveDir::Up);
-                        }
-                        // move to the down pane
-                        (KeyModifiers::CONTROL, KeyCode::Down) => {
-                            move_focus_in_pane(layout_m, MoveDir::Down);
-                        }
-
-                        (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
-                        (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
-                        (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
-                        (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
-                        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(ch)) => {
-                            if let Ok(_) =
-                                cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::InsertText(ch.to_string().into()))     
-//                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
-                            {
-                                mv_cursor_right(buffer_m, layout_m);
-                            }
-                        }
-                        (KeyModifiers::NONE, KeyCode::Enter) => {
-                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::InsertLine)?
-                        }
-                        (KeyModifiers::NONE, KeyCode::Backspace) => {
-                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::DeleteText(1))?;
-                        }
-                        _ => {}
                     }
                 }
                 Screen::Command => {

@@ -41,7 +41,9 @@ pub enum RenderError {
     #[error("Render layout error")]
     RenderLayoutError,
     #[error("Rect not found")]
-    RectNotFound
+    RectNotFound,
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
 

@@ -1,11 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::crossterm::{execute};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use std::collections::HashMap;
+use std::io::stdout;
 
-use crate::app::{App, Screen};
+use crate::app::{App, Screen, Mod};
 use crate::buffer::*;
 use crate::command::*;
 use crate::error::*;
@@ -13,6 +15,7 @@ use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
 use crate::popup::Popups;
 use crate::utils::*;
+use crate::cursor::Cursor;
 
 pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
     match app.current_screen {
@@ -77,6 +80,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
                 &app.command,
                 &mut layout_m.pane_rects,
                 layout_m.current_layout,
+                &app.current_mod,
             )?
             .ok_or(RenderError::RenderLayoutError)?;
 
@@ -143,21 +147,22 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
 
             frame.render_widget(command_line, command_line_frame[1]);
 
-            // show the popups 
+            // show the popups
             render_popups(&app.popups, frame);
 
             // show the cursor
             match app.current_screen {
                 Screen::Editor => {
                     if let Some(LayoutNode::Pane {
-                        cursor_pos,
+                        cursor,
                         scroll_offset,
                         buffer_id,
                         ..
                     }) = app.layout_manager.get_current_pane()
                     {
                         if let Ok(buf) = app.buf_manager.get_buffer(buffer_id) {
-                            let (cx, cy) = cursor_pos;
+                            render_cursor(&cursor)?;
+                            let (cx, cy) = cursor.pos;
 
                             let vx = buf.get_visual_width_upto(cy, cx);
 
@@ -205,11 +210,12 @@ pub fn render_layout(
     cmd: &KaoCo,
     pane_rects: &mut HashMap<usize, Rect>,
     current_layout: usize,
+    cur_mod: &Mod
 ) -> Result<Option<Rect>, RenderError> {
     match node {
         LayoutNode::Pane {
             id,
-            cursor_pos,
+            cursor,
             scroll_offset,
             scroll_thres,
             buffer_id,
@@ -221,12 +227,13 @@ pub fn render_layout(
                 area,
                 f,
                 buf_m,
-                cursor_pos,
+                &mut cursor.pos,
                 scroll_offset,
                 scroll_thres,
                 *buffer_id,
                 current_layout,
                 *id,
+                cur_mod,
             )?;
             pane_rects.insert(*id, area);
             if *id == current_layout {
@@ -260,8 +267,8 @@ pub fn render_layout(
                     .split(area),
             };
 
-            let res1 = render_layout(first, chunks[0], f, buf_m, cmd, pane_rects, current_layout)?;
-            let res2 = render_layout(second, chunks[1], f, buf_m, cmd, pane_rects, current_layout)?;
+            let res1 = render_layout(first, chunks[0], f, buf_m, cmd, pane_rects, current_layout, cur_mod)?;
+            let res2 = render_layout(second, chunks[1], f, buf_m, cmd, pane_rects, current_layout, cur_mod)?;
 
             if let Some(r) = res1 {
                 return Ok(Some(r));
@@ -286,6 +293,7 @@ pub fn render_buffer(
     buffer_id: usize,
     current_layout: usize,
     pane_id: usize,
+    cur_mod: &Mod,
 ) -> Result<Rect, LayoutError> {
     // editor frame include editor and status bar
     let editor_frame = Layout::default()
@@ -351,12 +359,19 @@ pub fn render_buffer(
         .border_style(Style::default().fg(border_color))
         .style(Style::default().fg(font_color));
 
-    let lines: Vec<Line> = buf.content.iter().map(|s| Line::from(s.as_str())).collect();
+//    let lines: Vec<Line> = buf.content.iter().map(|s| Line::from(s.as_str())).collect();
+
+    let lines = match cur_mod {
+        Mod::Visual(x, y) => render_visual(&buf.content, (*x, *y), *cursor_pos, ),
+        _ => buf.content.iter().map(|s| Line::from(s.as_str())).collect()
+    };
 
     let content = Paragraph::new(Text::from(lines))
         .block(editor_block)
         .scroll((scroll_offset.1 as u16, scroll_offset.0 as u16));
+    
 
+    // render the content
     frame.render_widget(content, editor_main[1]);
 
     // show the status bar
@@ -466,7 +481,7 @@ pub fn render_popups(popups: &Popups, frame: &mut Frame) {
             let x = area.width.saturating_sub(w as u16);
             let y = offset_y as u16;
 
-            offset_y += h; 
+            offset_y += h;
 
             Rect::new(x, y, w as u16, h as u16)
         };
@@ -481,6 +496,62 @@ pub fn render_popups(popups: &Popups, frame: &mut Frame) {
     }
 }
 
+fn render_cursor(cursor: &Cursor) -> Result<(), std::io::Error> {
+    execute!(stdout(), cursor.style)?;
+    Ok(())
+}
+
+
+fn render_visual(
+    content: &Vec<String>,
+    start: (usize, usize),
+    end: (usize, usize),
+) -> Vec<Line> {
+    let ((sx, sy), (ex, ey)) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
+
+    let mut result = Vec::new();
+
+    for (y, line) in content.iter().enumerate() {
+        let mut spans = Vec::new();
+        let line_len = get_line_len(line);
+
+        for x in 0..line_len {
+            let byte_start = char_to_byte_idx(line, x);
+            let byte_end = char_to_byte_idx(line, x + 1);
+            let ch = &line[byte_start..byte_end];
+
+            let in_range = if y < sy || y > ey {
+                false
+            } else if sy == ey {
+                y == sy && x >= sx && x < ex
+            } else if y == sy {
+                x >= sx
+            } else if y == ey {
+                x < ex
+            } else {
+                true
+            };
+
+            if in_range {
+                spans.push(Span::styled(
+                    ch.to_string(),
+                    Style::default().bg(Color::Blue),
+                ));
+            } else {
+                spans.push(Span::raw(ch.to_string()));
+            }
+        }
+
+        result.push(Line::from(spans));
+    }
+
+    result
+}
+
 fn get_banner() -> String {
     r#"
 ███████╗███╗   ███╗██╗██╗     ███████╗
@@ -492,3 +563,5 @@ fn get_banner() -> String {
     "#
     .to_string()
 }
+
+
