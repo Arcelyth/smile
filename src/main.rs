@@ -8,6 +8,7 @@ use ratatui::crossterm::event::{EnableMouseCapture, Event, KeyModifiers};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
+use ratatui::crossterm::cursor::{SetCursorStyle};
 use std::io;
 
 mod app;
@@ -33,6 +34,7 @@ use command::*;
 mod layout;
 use layout::layout_manager::MoveDir;
 
+mod cursor;
 mod popup;
 
 fn main() -> Result<()> {
@@ -61,7 +63,8 @@ fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
+        DisableMouseCapture,
+        SetCursorStyle::DefaultUserShape
     )?;
     terminal.show_cursor()?;
 
@@ -144,7 +147,11 @@ where
                         }
                         // delete current line
                         (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::DeleteLine)?;
+                            cur_cmd.handle_instructions(
+                                buffer_m,
+                                layout_m,
+                                Instruction::DeleteLine,
+                            )?;
                         }
                         // move to the left pane
                         (KeyModifiers::CONTROL, KeyCode::Left) => {
@@ -168,18 +175,27 @@ where
                         (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
                         (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
                         (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(ch)) => {
-                            if let Ok(_) =
-                                cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::InsertText(ch.to_string().into()))     
-//                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
+                            if let Ok(_) = cur_cmd.handle_instructions(
+                                buffer_m,
+                                layout_m,
+                                Instruction::InsertText(ch.to_string().into()),
+                            )
+                            //                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
                             {
                                 mv_cursor_right(buffer_m, layout_m);
                             }
                         }
-                        (KeyModifiers::NONE, KeyCode::Enter) => {
-                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::InsertLine)?
-                        }
+                        (KeyModifiers::NONE, KeyCode::Enter) => cur_cmd.handle_instructions(
+                            buffer_m,
+                            layout_m,
+                            Instruction::InsertLine,
+                        )?,
                         (KeyModifiers::NONE, KeyCode::Backspace) => {
-                            cur_cmd.handle_instructions(buffer_m, layout_m, Instruction::DeleteText(1))?;
+                            cur_cmd.handle_instructions(
+                                buffer_m,
+                                layout_m,
+                                Instruction::DeleteText(1),
+                            )?;
                         }
                         _ => {}
                     }

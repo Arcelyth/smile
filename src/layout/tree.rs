@@ -1,4 +1,5 @@
 use crate::buffer::BufferManager;
+use crate::cursor::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum SplitDirection {
@@ -11,7 +12,7 @@ pub enum LayoutNode {
     Pane {
         id: usize,
         buffer_id: usize,
-        cursor_pos: (usize, usize),
+        cursor: Cursor,
         scroll_offset: (usize, usize),
         scroll_thres: (usize, usize),
     },
@@ -28,7 +29,7 @@ impl LayoutNode {
         LayoutNode::Pane {
             id,
             buffer_id,
-            cursor_pos: (0, 0),
+            cursor: Cursor::new(),
             scroll_offset: (0, 0),
             scroll_thres: (0, 0),
         }
@@ -91,7 +92,7 @@ pub fn split_current(
     if let LayoutNode::Pane {
         id,
         buffer_id,
-        cursor_pos,
+        cursor,
         scroll_offset,
         scroll_thres,
         ..
@@ -109,7 +110,7 @@ pub fn split_current(
                 first: Box::new(LayoutNode::Pane {
                     id: *id,
                     buffer_id: *buffer_id,
-                    cursor_pos: *cursor_pos,
+                    cursor: cursor.clone(),
                     scroll_offset: *scroll_offset,
                     scroll_thres: *scroll_thres,
                 }),

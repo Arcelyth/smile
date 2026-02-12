@@ -1,9 +1,11 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::crossterm::{execute};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use std::collections::HashMap;
+use std::io::stdout;
 
 use crate::app::{App, Screen};
 use crate::buffer::*;
@@ -13,6 +15,7 @@ use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
 use crate::popup::Popups;
 use crate::utils::*;
+use crate::cursor::Cursor;
 
 pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
     match app.current_screen {
@@ -143,21 +146,22 @@ pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
 
             frame.render_widget(command_line, command_line_frame[1]);
 
-            // show the popups 
+            // show the popups
             render_popups(&app.popups, frame);
 
             // show the cursor
             match app.current_screen {
                 Screen::Editor => {
                     if let Some(LayoutNode::Pane {
-                        cursor_pos,
+                        cursor,
                         scroll_offset,
                         buffer_id,
                         ..
                     }) = app.layout_manager.get_current_pane()
                     {
                         if let Ok(buf) = app.buf_manager.get_buffer(buffer_id) {
-                            let (cx, cy) = cursor_pos;
+                            render_cursor(&cursor)?;
+                            let (cx, cy) = cursor.pos;
 
                             let vx = buf.get_visual_width_upto(cy, cx);
 
@@ -209,7 +213,7 @@ pub fn render_layout(
     match node {
         LayoutNode::Pane {
             id,
-            cursor_pos,
+            cursor,
             scroll_offset,
             scroll_thres,
             buffer_id,
@@ -221,7 +225,7 @@ pub fn render_layout(
                 area,
                 f,
                 buf_m,
-                cursor_pos,
+                &mut cursor.pos,
                 scroll_offset,
                 scroll_thres,
                 *buffer_id,
@@ -466,7 +470,7 @@ pub fn render_popups(popups: &Popups, frame: &mut Frame) {
             let x = area.width.saturating_sub(w as u16);
             let y = offset_y as u16;
 
-            offset_y += h; 
+            offset_y += h;
 
             Rect::new(x, y, w as u16, h as u16)
         };
@@ -479,6 +483,11 @@ pub fn render_popups(popups: &Popups, frame: &mut Frame) {
 
         frame.render_widget(paragraph, rect);
     }
+}
+
+fn render_cursor(cursor: &Cursor) -> Result<(), std::io::Error> {
+    execute!(stdout(), cursor.style)?;
+    Ok(())
 }
 
 fn get_banner() -> String {

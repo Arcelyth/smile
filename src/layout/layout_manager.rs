@@ -209,54 +209,55 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
 
-        let y = cursor_pos.1;
-        let x = cursor_pos.0;
+        let y = cursor.pos.1;
+        let x = cursor.pos.0;
 
         let line = &buf.content[y];
         let line_len = get_line_len(line);
 
         if x < line_len {
-            cursor_pos.0 += 1;
+            cursor.pos.0 += 1;
         } else if y + 1 < buf.content.len() && freemod {
-            cursor_pos.1 += 1;
-            cursor_pos.0 = 0;
+            cursor.pos.1 += 1;
+            cursor.pos.0 = 0;
         }
 
         Ok(())
     }
 
     pub fn mv_cursor_left(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
+        let freemod = false;
         let pane = self
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
 
-        if cursor_pos.0 > 0 {
-            cursor_pos.0 -= 1;
-        } else if cursor_pos.1 > 0 {
-            cursor_pos.1 -= 1;
-            cursor_pos.0 = get_line_len(&buf.content[cursor_pos.1]);
+        if cursor.pos.0 > 0 {
+            cursor.pos.0 -= 1;
+        } else if cursor.pos.1 > 0 && freemod {
+            cursor.pos.1 -= 1;
+            cursor.pos.0 = get_line_len(&buf.content[cursor.pos.1]);
         }
 
         Ok(())
@@ -267,20 +268,20 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
 
-        if cursor_pos.1 > 0 {
-            cursor_pos.1 -= 1;
-            cursor_pos.0 = cursor_pos.0.min(get_line_len(&buf.content[cursor_pos.1]));
+        if cursor.pos.1 > 0 {
+            cursor.pos.1 -= 1;
+            cursor.pos.0 = cursor.pos.0.min(get_line_len(&buf.content[cursor.pos.1]));
         }
 
         Ok(())
@@ -293,26 +294,26 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
 
-        if cursor_pos.1 + 1 < buf.content.len() {
-            cursor_pos.1 += 1;
-            cursor_pos.0 = cursor_pos.0.min(get_line_len(&buf.content[cursor_pos.1]));
+        if cursor.pos.1 + 1 < buf.content.len() {
+            cursor.pos.1 += 1;
+            cursor.pos.0 = cursor.pos.0.min(get_line_len(&buf.content[cursor.pos.1]));
         } else if freemod {
-            cursor_pos.1 += 1;
-            cursor_pos.0 = 0;
+            cursor.pos.1 += 1;
+            cursor.pos.0 = 0;
             buf.apply_op(
                 EditOp::InsertLine {
-                    y: cursor_pos.1,
+                    y: cursor.pos.1,
                     text: "".into(),
                 },
                 true,
@@ -327,18 +328,18 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
 
-        cursor_pos.0 = get_line_len(&buf.content[cursor_pos.1]);
+        cursor.pos.0 = get_line_len(&buf.content[cursor.pos.1]);
         Ok(())
     }
 
@@ -347,16 +348,16 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, _buffer_id) = match pane {
+        let (cursor, _buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
-        cursor_pos.0 = 0;
+        cursor.pos.0 = 0;
         Ok(())
     }
 
@@ -365,17 +366,17 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
-        let (x, y) = *cursor_pos;
+        let (x, y) = cursor.pos;
 
         if x > 0 {
             let del_str = &buf.content[y][x - 1..x];
@@ -387,7 +388,7 @@ impl LayoutManager {
                 },
                 true,
             )?;
-            cursor_pos.0 -= 1;
+            cursor.pos.0 -= 1;
         } else if y > 0 {
             let prev_line = &buf.content[y - 1];
             let prev_len = get_line_len(prev_line);
@@ -407,8 +408,8 @@ impl LayoutManager {
                     true,
                 )?;
             }
-            cursor_pos.1 -= 1;
-            cursor_pos.0 = prev_len;
+            cursor.pos.1 -= 1;
+            cursor.pos.0 = prev_len;
         }
 
         Ok(())
@@ -419,17 +420,17 @@ impl LayoutManager {
             .get_current_pane_mut()
             .ok_or(LayoutError::PaneNotFound)?;
 
-        let (cursor_pos, buffer_id) = match pane {
+        let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor_pos,
+                cursor,
                 buffer_id,
                 ..
-            } => (cursor_pos, *buffer_id),
+            } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
 
         let buf = buf_m.get_buffer_mut(buffer_id)?;
-        let (x, y) = *cursor_pos;
+        let (x, y) = cursor.pos;
 
         let byte_idx = char_to_byte_idx(&buf.content[y], x);
         let next_line = buf.content[y].split_off(byte_idx);
@@ -440,8 +441,8 @@ impl LayoutManager {
             },
             true,
         )?;
-        cursor_pos.1 += 1;
-        cursor_pos.0 = 0;
+        cursor.pos.1 += 1;
+        cursor.pos.0 = 0;
 
         Ok(())
     }
