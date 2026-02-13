@@ -1,21 +1,21 @@
 use ratatui::Frame;
+use ratatui::crossterm::execute;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::crossterm::{execute};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use std::collections::HashMap;
 use std::io::stdout;
 
-use crate::app::{App, Screen, Mod};
+use crate::app::{App, Mod, Screen};
 use crate::buffer::*;
 use crate::command::*;
+use crate::cursor::Cursor;
 use crate::error::*;
 use crate::layout::layout_manager::*;
 use crate::layout::tree::*;
 use crate::popup::Popups;
 use crate::utils::*;
-use crate::cursor::Cursor;
 
 pub fn ui(frame: &mut Frame, app: &mut App) -> Result<(), RenderError> {
     match app.current_screen {
@@ -210,7 +210,7 @@ pub fn render_layout(
     cmd: &KaoCo,
     pane_rects: &mut HashMap<usize, Rect>,
     current_layout: usize,
-    cur_mod: &Mod
+    cur_mod: &Mod,
 ) -> Result<Option<Rect>, RenderError> {
     match node {
         LayoutNode::Pane {
@@ -267,8 +267,26 @@ pub fn render_layout(
                     .split(area),
             };
 
-            let res1 = render_layout(first, chunks[0], f, buf_m, cmd, pane_rects, current_layout, cur_mod)?;
-            let res2 = render_layout(second, chunks[1], f, buf_m, cmd, pane_rects, current_layout, cur_mod)?;
+            let res1 = render_layout(
+                first,
+                chunks[0],
+                f,
+                buf_m,
+                cmd,
+                pane_rects,
+                current_layout,
+                cur_mod,
+            )?;
+            let res2 = render_layout(
+                second,
+                chunks[1],
+                f,
+                buf_m,
+                cmd,
+                pane_rects,
+                current_layout,
+                cur_mod,
+            )?;
 
             if let Some(r) = res1 {
                 return Ok(Some(r));
@@ -359,17 +377,16 @@ pub fn render_buffer(
         .border_style(Style::default().fg(border_color))
         .style(Style::default().fg(font_color));
 
-//    let lines: Vec<Line> = buf.content.iter().map(|s| Line::from(s.as_str())).collect();
+    //    let lines: Vec<Line> = buf.content.iter().map(|s| Line::from(s.as_str())).collect();
 
     let lines = match cur_mod {
-        Mod::Visual(x, y) => render_visual(&buf.content, (*x, *y), *cursor_pos, ),
-        _ => buf.content.iter().map(|s| Line::from(s.as_str())).collect()
+        Mod::Visual(x, y) => render_visual(&buf.content, (*x, *y), *cursor_pos),
+        _ => buf.content.iter().map(|s| Line::from(s.as_str())).collect(),
     };
 
     let content = Paragraph::new(Text::from(lines))
         .block(editor_block)
         .scroll((scroll_offset.1 as u16, scroll_offset.0 as u16));
-    
 
     // render the content
     frame.render_widget(content, editor_main[1]);
@@ -378,11 +395,12 @@ pub fn render_buffer(
     let status_bar_main = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
+            Constraint::Percentage(18),
+            Constraint::Percentage(16),
+            Constraint::Percentage(16),
+            Constraint::Percentage(16),
+            Constraint::Percentage(16),
+            Constraint::Percentage(18),
         ])
         .split(editor_frame[1]);
 
@@ -390,7 +408,8 @@ pub fn render_buffer(
     let status_second_font_color = Color::Rgb(240, 172, 125);
     let status_third_font_color = Color::Rgb(240, 186, 89);
     let status_forth_font_color = Color::Rgb(210, 240, 105);
-    let status_last_font_color = Color::Rgb(210, 240, 105);
+    let status_fifth_font_color = Color::Rgb(150, 240, 105);
+    let status_last_font_color = Color::Rgb(105, 240, 181);
 
     // show the status pos
     let pos = cursor_pos;
@@ -438,15 +457,27 @@ pub fn render_buffer(
         "-"
     };
 
-    let status_last_block = Block::default()
+    let status_forth_block = Block::default()
         .borders(Borders::BOTTOM)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().fg(status_forth_font_color));
-    let status_last = Paragraph::new(buf_fmt)
+    let status_forth = Paragraph::new(buf_fmt)
         .alignment(Alignment::Center)
-        .block(status_last_block);
+        .block(status_forth_block);
 
-    frame.render_widget(status_last, status_bar_main[3]);
+    frame.render_widget(status_forth, status_bar_main[3]);
+
+    // show the fifth position of status bar
+    let fifth_text = "-";
+    let status_fifth_block = Block::default()
+        .borders(Borders::BOTTOM)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().fg(status_fifth_font_color));
+    let status_fifth = Paragraph::new(fifth_text)
+        .alignment(Alignment::Center)
+        .block(status_fifth_block);
+
+    frame.render_widget(status_fifth, status_bar_main[4]);
 
     // show the last position of status bar
     let status_last_block = Block::default()
@@ -463,7 +494,7 @@ pub fn render_buffer(
         .alignment(Alignment::Center)
         .block(status_last_block);
 
-    frame.render_widget(status_last, status_bar_main[4]);
+    frame.render_widget(status_last, status_bar_main[5]);
     return Ok(editor_main[1]);
 }
 
@@ -501,12 +532,7 @@ fn render_cursor(cursor: &Cursor) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-
-fn render_visual(
-    content: &Vec<String>,
-    start: (usize, usize),
-    end: (usize, usize),
-) -> Vec<Line> {
+fn render_visual(content: &Vec<String>, start: (usize, usize), end: (usize, usize)) -> Vec<Line> {
     let ((sx, sy), (ex, ey)) = if start <= end {
         (start, end)
     } else {
@@ -538,10 +564,7 @@ fn render_visual(
             };
 
             if in_range {
-                spans.push(Span::styled(
-                    ch.to_string(),
-                    Style::default().bg(bg_color),
-                ));
+                spans.push(Span::styled(ch.to_string(), Style::default().bg(bg_color)));
             } else {
                 spans.push(Span::raw(ch.to_string()));
             }
@@ -564,5 +587,3 @@ fn get_banner() -> String {
     "#
     .to_string()
 }
-
-

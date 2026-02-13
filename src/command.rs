@@ -296,33 +296,50 @@ impl KaoCo {
     }
 }
 
-pub fn create_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager, name: &str) {
+pub fn create_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager, name: &str) -> Result<(), LayoutError>{
     let id = bm.add_new_buffer(name);
-    lm.change_current_buffer_id(id);
+    lm.change_current_buffer_id(id)?;
+    Ok(())
 }
 
-pub fn mv_cursor_right(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.mv_cursor_right(bm);
+pub fn mv_cursor_right(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
+    lm.mv_cursor_right(bm)?;
+    Ok(())
 }
 
-pub fn mv_cursor_left(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.mv_cursor_left(bm);
+pub fn mv_cursor_left(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_left(bm)?;
+    Ok(())
 }
 
-pub fn mv_cursor_up(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.mv_cursor_up(bm);
+pub fn mv_cursor_up(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_up(bm)?;
+    Ok(())
 }
 
-pub fn mv_cursor_down(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.mv_cursor_down(bm);
+pub fn mv_cursor_down(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_down(bm)?;
+    Ok(())
 }
 
-pub fn mv_cursor_head(lm: &mut LayoutManager) {
-    lm.mv_cursor_head();
+pub fn mv_cursor_next_word_head(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_next_word_head(bm)?;
+    Ok(())
+} 
+
+pub fn mv_cursor_prev_word_head(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_prev_word_head(bm)?;
+    Ok(())
+} 
+
+pub fn mv_cursor_head(lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_head()?;
+    Ok(())
 }
 
-pub fn mv_cursor_tail(bm: &mut BufferManager, lm: &mut LayoutManager) {
-    lm.mv_cursor_tail(bm);
+pub fn mv_cursor_tail(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+    lm.mv_cursor_tail(bm)?;
+    Ok(())
 }
 
 pub fn add_content_at(

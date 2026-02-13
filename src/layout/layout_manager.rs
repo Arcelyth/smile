@@ -5,6 +5,7 @@ use crate::op::EditOp;
 use crate::utils::{char_to_byte_idx, get_line_len, overlap};
 use ratatui::layout::Rect;
 use std::collections::HashMap;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub struct LayoutManager {
     pub pane_rects: HashMap<usize, Rect>,
@@ -211,9 +212,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -244,9 +243,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -270,9 +267,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -296,9 +291,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -323,6 +316,120 @@ impl LayoutManager {
         Ok(())
     }
 
+    pub fn mv_cursor_next_word_head(
+        &mut self,
+        buf_m: &mut BufferManager,
+    ) -> Result<(), LayoutError> {
+        let pane = self
+            .get_current_pane_mut()
+            .ok_or(LayoutError::PaneNotFound)?;
+
+        let (cursor, buffer_id) = match pane {
+            LayoutNode::Pane {
+                cursor, buffer_id, ..
+            } => (cursor, *buffer_id),
+            _ => return Err(LayoutError::NotPane),
+        };
+
+        let buf = buf_m.get_buffer_mut(buffer_id)?;
+
+        let mut y = cursor.pos.1;
+
+        while y < buf.content.len() {
+            let line = &buf.content[y];
+
+            let graphemes = line.graphemes(true).collect::<Vec<&str>>();
+
+            let (mut x, jump_out) = if y == cursor.pos.1 {
+                (cursor.pos.0, true)
+            } else {
+                (0, false)
+            };
+
+            let is_word = |g: &str| g.chars().all(|c| c.is_alphanumeric() || c == '_');
+
+            while x < graphemes.len() && is_word(graphemes[x]) && jump_out {
+                x += 1;
+            }
+
+            while x < graphemes.len() && !is_word(graphemes[x]) {
+                x += 1;
+            }
+
+            if x < graphemes.len() {
+                cursor.pos = (x, y);
+                return Ok(());
+            }
+
+            y += 1;
+        }
+
+        Ok(())
+    }
+
+    pub fn mv_cursor_prev_word_head(
+        &mut self,
+        buf_m: &mut BufferManager,
+    ) -> Result<(), LayoutError> {
+        let pane = self
+            .get_current_pane_mut()
+            .ok_or(LayoutError::PaneNotFound)?;
+
+        let (cursor, buffer_id) = match pane {
+            LayoutNode::Pane {
+                cursor, buffer_id, ..
+            } => (cursor, *buffer_id),
+            _ => return Err(LayoutError::NotPane),
+        };
+
+        let buf = buf_m.get_buffer_mut(buffer_id)?;
+
+        let mut y = cursor.pos.1;
+        let mut x = cursor.pos.0;
+
+        let is_word = |g: &str| g.chars().all(|c| c.is_alphanumeric() || c == '_');
+
+        loop {
+            if y >= buf.content.len() {
+                return Ok(());
+            }
+
+            let line = &buf.content[y];
+            let graphemes = line.graphemes(true).collect::<Vec<&str>>();
+
+            if graphemes.is_empty() {
+                if y == 0 {
+                    return Ok(());
+                }
+                y -= 1;
+                x = get_line_len(&buf.content[y]);
+                continue;
+            }
+
+            if x == 0 {
+                if y == 0 {
+                    return Ok(());
+                }
+                y -= 1;
+                x = get_line_len(&buf.content[y]);
+                continue;
+            }
+
+            x -= 1;
+
+            while x > 0 && !is_word(graphemes[x]) {
+                x -= 1;
+            }
+
+            while x > 0 && is_word(graphemes[x - 1]) {
+                x -= 1;
+            }
+
+            cursor.pos = (x, y);
+            return Ok(());
+        }
+    }
+
     pub fn mv_cursor_tail(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
         let pane = self
             .get_current_pane_mut()
@@ -330,9 +437,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -350,9 +455,7 @@ impl LayoutManager {
 
         let (cursor, _buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -368,9 +471,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -422,9 +523,7 @@ impl LayoutManager {
 
         let (cursor, buffer_id) = match pane {
             LayoutNode::Pane {
-                cursor,
-                buffer_id,
-                ..
+                cursor, buffer_id, ..
             } => (cursor, *buffer_id),
             _ => return Err(LayoutError::NotPane),
         };
@@ -446,7 +545,6 @@ impl LayoutManager {
 
         Ok(())
     }
-   
 }
 
 pub fn update_scroll(
