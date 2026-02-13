@@ -114,14 +114,30 @@ where
                 },
                 Screen::Editor => {
                     match app.current_mod {
-                        Mod::Visual(_, _) => match (key.modifiers, key.code) {
+                        Mod::Visual(vx, vy) => match (key.modifiers, key.code) {
                             (KeyModifiers::NONE, KeyCode::Esc) => {
                                 app.current_mod = Mod::Input;
                             }
-                            (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
-                            (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
-                            (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
-                            (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
+                            // move cursor to the head of line
+                            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
+                                mv_cursor_head(layout_m);
+                            }
+                            // move cursor to the end of line
+                            (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
+                                mv_cursor_tail(buffer_m, layout_m);
+                            }
+                            (_, KeyCode::Char('d')) => {
+                                cur_cmd.handle_instructions(
+                                    buffer_m,
+                                    layout_m,
+                                    Instruction::DeleteBlock((vx, vy)),
+                                )?;
+                                app.current_mod = Mod::Input;
+                            }
+                            (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m)?,
+                            (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m)?,
+                            (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m)?,
+                            (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m)?,
                             _ => {}
                         },
                         _ => {
@@ -146,11 +162,19 @@ where
                                 }
                                 // move cursor to the head of line
                                 (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
-                                    mv_cursor_head(layout_m);
+                                    mv_cursor_head(layout_m)?;
                                 }
                                 // move cursor to the end of line
                                 (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
-                                    mv_cursor_tail(buffer_m, layout_m);
+                                    mv_cursor_tail(buffer_m, layout_m)?;
+                                }
+                                // move cursor to the head of the next word
+                                (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
+                                    mv_cursor_next_word_head(buffer_m, layout_m)?;
+                                }
+                                // move cursor to the head of the prev word
+                                (KeyModifiers::CONTROL, KeyCode::Char('k')) => {
+                                    mv_cursor_prev_word_head(buffer_m, layout_m)?;
                                 }
                                 // active the command line
                                 (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
@@ -185,10 +209,10 @@ where
                                 (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
                                     enter_visual(layout_m, &mut app.current_mod)?;
                                 }
-                                (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),
-                                (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m),
-                                (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m),
-                                (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m),
+                                (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m)?,
+                                (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m)?,
+                                (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m)?,
+                                (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m)?,
                                 (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(ch)) => {
                                     if let Ok(_) = cur_cmd.handle_instructions(
                                         buffer_m,
@@ -197,7 +221,7 @@ where
                                     )
                                     //                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
                                     {
-                                        mv_cursor_right(buffer_m, layout_m);
+                                        mv_cursor_right(buffer_m, layout_m)?;
                                     }
                                 }
                                 (KeyModifiers::NONE, KeyCode::Enter) => cur_cmd
