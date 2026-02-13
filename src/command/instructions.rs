@@ -5,5 +5,7 @@ pub enum Instruction {
     DeleteText(usize),
     InsertLine,
     DeleteLine,
+    DeleteBlock((usize, usize)),
+    InsertBlock(Vec<Arc<str>>),
 }
 

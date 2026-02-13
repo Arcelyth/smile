@@ -114,8 +114,24 @@ where
                 },
                 Screen::Editor => {
                     match app.current_mod {
-                        Mod::Visual(_, _) => match (key.modifiers, key.code) {
+                        Mod::Visual(vx, vy) => match (key.modifiers, key.code) {
                             (KeyModifiers::NONE, KeyCode::Esc) => {
+                                app.current_mod = Mod::Input;
+                            }
+                            // move cursor to the head of line
+                            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
+                                mv_cursor_head(layout_m);
+                            }
+                            // move cursor to the end of line
+                            (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
+                                mv_cursor_tail(buffer_m, layout_m);
+                            }
+                            (_, KeyCode::Char('d')) => {
+                                cur_cmd.handle_instructions(
+                                    buffer_m,
+                                    layout_m,
+                                    Instruction::DeleteBlock((vx, vy)),
+                                )?;
                                 app.current_mod = Mod::Input;
                             }
                             (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m),

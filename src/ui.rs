@@ -515,6 +515,7 @@ fn render_visual(
 
     let mut result = Vec::new();
 
+    let bg_color = Color::Rgb(127, 148, 141);
     for (y, line) in content.iter().enumerate() {
         let mut spans = Vec::new();
         let line_len = get_line_len(line);
@@ -539,7 +540,7 @@ fn render_visual(
             if in_range {
                 spans.push(Span::styled(
                     ch.to_string(),
-                    Style::default().bg(Color::Blue),
+                    Style::default().bg(bg_color),
                 ));
             } else {
                 spans.push(Span::raw(ch.to_string()));

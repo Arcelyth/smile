@@ -117,6 +117,98 @@ impl Buffer {
         Ok(deleted)
     }
 
+    pub fn delete_content_block(
+        &mut self,
+        start_pos: (usize, usize),
+        end_pos: (usize, usize),
+    ) -> Result<String, BufferError> {
+        let ((sx, sy), (ex, ey)) = if start_pos <= end_pos {
+            (start_pos, end_pos)
+        } else {
+            (end_pos, start_pos)
+        };
+
+        if sy >= self.content.len() || ey >= self.content.len() {
+            return Err(BufferError::InvalidPosition);
+        }
+
+        let mut deleted = String::new();
+
+        if sy == ey {
+            let line = &mut self.content[sy];
+
+            let start_byte = char_to_byte_idx(line, sx);
+            let end_byte = char_to_byte_idx(line, ex);
+
+            deleted = line[start_byte..end_byte].to_string();
+            line.drain(start_byte..end_byte);
+            return Ok(deleted);
+        }
+
+        let first_line = &mut self.content[sy];
+        let start_byte = char_to_byte_idx(first_line, sx);
+        deleted.push_str(&first_line[start_byte..]);
+        deleted.push('\n');
+        first_line.truncate(start_byte);
+
+        for i in (sy + 1)..ey {
+            deleted.push_str(&self.content[i]);
+            deleted.push('\n');
+        }
+
+        let last_line = &self.content[ey];
+        let end_byte = char_to_byte_idx(last_line, ex);
+        deleted.push_str(&last_line[..end_byte]);
+
+        let remaining = last_line[end_byte..].to_string();
+
+        self.content.drain((sy + 1)..=ey);
+
+        self.content[sy].push_str(&remaining);
+
+        Ok(deleted)
+    }
+
+    pub fn insert_content_block(
+        &mut self,
+        pos: (usize, usize), 
+        content: &str,
+    ) -> Result<(), BufferError> {
+        let (x, y) = pos;
+
+        if y >= self.content.len() {
+            return Err(BufferError::InvalidPosition);
+        }
+
+        let line = &mut self.content[y];
+        let byte_idx = char_to_byte_idx(line, x);
+
+        let tail = line[byte_idx..].to_string();
+        line.truncate(byte_idx);
+
+        let lines: Vec<&str> = content.split('\n').collect();
+
+        if lines.len() == 1 {
+            line.push_str(lines[0]);
+            line.push_str(&tail);
+            return Ok(());
+        }
+
+        line.push_str(lines[0]);
+
+        let mut insert_index = y + 1;
+
+        for mid_line in &lines[1..lines.len() - 1] {
+            self.content.insert(insert_index, mid_line.to_string());
+            insert_index += 1;
+        }
+
+        let last_line = format!("{}{}", lines.last().unwrap(), tail);
+        self.content.insert(insert_index, last_line);
+
+        Ok(())
+    }
+
     pub fn change_content_at(
         &mut self,
         len_in_chars: usize,
@@ -168,7 +260,7 @@ impl Buffer {
             println!("[Warning]: Change content at a invalid position.");
             return Err(BufferError::InvalidPosition);
         }
-        Ok(self.content.insert(y , String::from(str)))
+        Ok(self.content.insert(y, String::from(str)))
     }
 
     pub fn save(&mut self) -> io::Result<()> {
@@ -252,28 +344,45 @@ impl Buffer {
     }
 
     pub fn revoke(&mut self) -> Result<(), LayoutError> {
-        let op = if let Some(o) = self.op_stack.pop() { o } else {return Ok(())};
+        let op = if let Some(o) = self.op_stack.pop() {
+            o
+        } else {
+            return Ok(());
+        };
         self.apply_op(op.inverse(), false)?;
         Ok(())
     }
 
     pub fn apply_op(&mut self, op: EditOp, add: bool) -> Result<(), BufferError> {
-        match op.clone() {
-            EditOp::Insert { pos, text, .. } => {
+        let new_op = match op.clone() {
+            EditOp::Insert { pos, text, len } => {
                 self.add_content_at(&text, pos)?;
+                EditOp::Insert {pos, text, len}
             }
             EditOp::Delete { pos, len, .. } => {
-                self.delete_content_at(len, pos)?;
+                let text = self.delete_content_at(len, pos)?;
+                EditOp::Delete {pos, text: text.into(), len}
             }
             EditOp::InsertLine { y, text } => {
                 self.add_new_line(y, &text)?;
+                EditOp::InsertLine { y, text }
             }
             EditOp::DeleteLine { y, .. } => {
-                self.delete_line(y)?;
+                let text = self.delete_line(y)?;
+                EditOp::DeleteLine { y, text: text.into() }
             }
+            EditOp::DeleteBlock { start_pos, end_pos, .. } => {
+                let text = self.delete_content_block(start_pos, end_pos)?;
+                EditOp::DeleteBlock { start_pos, end_pos, text: text.into() }
+            }
+            EditOp::InsertBlock { start_pos, text, end_pos } => {
+                self.insert_content_block(start_pos, &text)?;
+                EditOp::InsertBlock { start_pos, end_pos, text }
+            }
+
         };
         if add {
-            self.handle_change(op);
+            self.handle_change(new_op);
         }
         Ok(())
     }
