@@ -120,11 +120,11 @@ where
                             }
                             // move cursor to the head of line
                             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
-                                mv_cursor_head(layout_m);
+                                mv_cursor_head(layout_m)?;
                             }
                             // move cursor to the end of line
                             (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
-                                mv_cursor_tail(buffer_m, layout_m);
+                                mv_cursor_tail(buffer_m, layout_m)?;
                             }
                             (_, KeyCode::Char('d')) => {
                                 cur_cmd.handle_instructions(
@@ -135,7 +135,7 @@ where
                                 app.current_mod = Mod::Input;
                             }
                             (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m)?,
-                            (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m)?,
+                            (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m, 1)?,
                             (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m)?,
                             (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m)?,
                             _ => {}
@@ -144,7 +144,13 @@ where
                             match (key.modifiers, key.code) {
                                 // exit
                                 (KeyModifiers::CONTROL, KeyCode::Char('q')) => {
-                                    return Ok(());
+                                    close_current_pane(
+                                        cur_cmd,
+                                        buffer_m,
+                                        layout_m,
+                                        &mut app.should_exit,
+                                        &mut app.current_screen,
+                                    )?;
                                 }
                                 // save file
                                 (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
@@ -209,8 +215,27 @@ where
                                 (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
                                     enter_visual(layout_m, &mut app.current_mod)?;
                                 }
+                                // enter Tab
+                                (_, KeyCode::Tab) => {
+                                    if let Ok(_) = cur_cmd.handle_instructions(
+                                        buffer_m,
+                                        layout_m,
+                                        Instruction::InsertText("    ".to_string().into()),
+                                    ) {
+                                        mv_cursor_right(buffer_m, layout_m, 4)?;
+                                    }
+                                }
+                                // enter Home
+                                (_, KeyCode::Home) => {
+                                    mv_cursor_head(layout_m)?;
+                                }
+                                // enter End
+                                (_, KeyCode::End) => {
+                                    mv_cursor_tail(buffer_m, layout_m)?;
+                                }
+
                                 (_, KeyCode::Left) => mv_cursor_left(buffer_m, layout_m)?,
-                                (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m)?,
+                                (_, KeyCode::Right) => mv_cursor_right(buffer_m, layout_m, 1)?,
                                 (_, KeyCode::Up) => mv_cursor_up(buffer_m, layout_m)?,
                                 (_, KeyCode::Down) => mv_cursor_down(buffer_m, layout_m)?,
                                 (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(ch)) => {
@@ -218,10 +243,8 @@ where
                                         buffer_m,
                                         layout_m,
                                         Instruction::InsertText(ch.to_string().into()),
-                                    )
-                                    //                                add_content_at(buffer_m, layout_m, ch.to_string().as_str())
-                                    {
-                                        mv_cursor_right(buffer_m, layout_m)?;
+                                    ) {
+                                        mv_cursor_right(buffer_m, layout_m, 1)?;
                                     }
                                 }
                                 (KeyModifiers::NONE, KeyCode::Enter) => cur_cmd
@@ -263,7 +286,13 @@ where
                         (_, KeyCode::Right) => cur_cmd.mv_cursor_right(),
                         (KeyModifiers::NONE, KeyCode::Enter) => {
                             let ret = cur_cmd
-                                .handle_command(buffer_m, layout_m, cur_screen, &mut app.popups)
+                                .handle_command(
+                                    buffer_m,
+                                    layout_m,
+                                    cur_screen,
+                                    &mut app.popups,
+                                    &mut app.should_exit,
+                                )
                                 .unwrap();
                             if ret {
                                 app.current_screen = Screen::Editor

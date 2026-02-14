@@ -204,7 +204,7 @@ impl LayoutManager {
         self.pane_rects.contains_key(&id)
     }
 
-    pub fn mv_cursor_right(&mut self, buf_m: &mut BufferManager) -> Result<(), LayoutError> {
+    pub fn mv_cursor_right(&mut self, buf_m: &mut BufferManager, dis: usize) -> Result<(), LayoutError> {
         let freemod = false;
         let pane = self
             .get_current_pane_mut()
@@ -225,11 +225,13 @@ impl LayoutManager {
         let line = &buf.content[y];
         let line_len = get_line_len(line);
 
-        if x < line_len {
-            cursor.pos.0 += 1;
+        if x + dis < line_len {
+            cursor.pos.0 += dis;
         } else if y + 1 < buf.content.len() && freemod {
             cursor.pos.1 += 1;
             cursor.pos.0 = 0;
+        } else {
+            cursor.pos.0 = line_len;
         }
 
         Ok(())

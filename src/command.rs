@@ -30,6 +30,7 @@ pub enum KaoMoJi {
 #[derive(Debug, Copy, Clone)]
 pub enum ExCmd {
     AskAndSave,
+    AskAndQuit,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -168,6 +169,7 @@ impl KaoCo {
         lm: &mut LayoutManager,
         cur_screen: &mut Screen,
         popups: &mut Popups,
+        quit: &mut bool,
     ) -> Result<bool, LayoutError> {
         let buf = lm.get_current_buffer_mut(buf_m)?;
         match self.status {
@@ -176,6 +178,12 @@ impl KaoCo {
                     buf.change_name(&self.content.trim());
                     println!("{}", buf.name);
                     buf.save()?;
+                    self.say = "".into();
+                }
+                ExCmd::AskAndQuit => {
+                    if self.content.trim() == "y" {
+                        *quit = true;
+                    }
                     self.say = "".into();
                 }
             },
@@ -187,10 +195,10 @@ impl KaoCo {
                     buf.revoke()?;
                 }
                 "head" => {
-                    mv_cursor_head(lm);
+                    mv_cursor_head(lm)?;
                 }
                 "tail" => {
-                    mv_cursor_tail(buf_m, lm);
+                    mv_cursor_tail(buf_m, lm)?;
                 }
                 "save" => {
                     if buf.path.is_some() {
@@ -217,7 +225,7 @@ impl KaoCo {
                     split(buf_m, lm, SplitDirection::Horizontal, None)?;
                 }
                 "close" => {
-                    close_current_pane(lm, cur_screen)?;
+                    close_current_pane(self, buf_m, lm, quit, cur_screen)?;
                     move_focus_in_pane(lm, MoveDir::Right);
                 }
                 "right pane" => {
@@ -265,7 +273,7 @@ impl KaoCo {
                 add_content_at(buf_m, lm, &str)?;
                 "InsertText"
             }
-            Instruction::DeleteText(len) => {
+            Instruction::DeleteText(_) => {
                 lm.handle_backspace(buf_m)?;
                 "DeleteText"
             }
@@ -281,7 +289,7 @@ impl KaoCo {
                 delete_block(buf_m, lm, pos)?;
                 "DeleteBlock"
             }
-            Instruction::InsertBlock(text) => {
+            Instruction::InsertBlock(_) => {
                 delete_line(buf_m, lm)?;
                 "DeleteLine"
             }
@@ -294,50 +302,66 @@ impl KaoCo {
         self.status = CmdStatus::Exec(ExCmd::AskAndSave);
         self.say = "Input the file's name".into();
     }
+
+    pub fn ask_and_quit(&mut self, screen: &mut Screen) {
+        *screen = Screen::Command;
+        self.status = CmdStatus::Exec(ExCmd::AskAndQuit);
+        self.say = "The file hasn't been saved. Are you sure you want to exit?(y or n)".into();
+    }
 }
 
-pub fn create_new_buffer(bm: &mut BufferManager, lm: &mut LayoutManager, name: &str) -> Result<(), LayoutError>{
+pub fn create_new_buffer(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+    name: &str,
+) -> Result<(), LayoutError> {
     let id = bm.add_new_buffer(name);
     lm.change_current_buffer_id(id)?;
     Ok(())
 }
 
-pub fn mv_cursor_right(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
-    lm.mv_cursor_right(bm)?;
+pub fn mv_cursor_right(bm: &mut BufferManager, lm: &mut LayoutManager, distance: usize) -> Result<(), LayoutError> {
+    lm.mv_cursor_right(bm, distance)?;
     Ok(())
 }
 
-pub fn mv_cursor_left(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_left(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
     lm.mv_cursor_left(bm)?;
     Ok(())
 }
 
-pub fn mv_cursor_up(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_up(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
     lm.mv_cursor_up(bm)?;
     Ok(())
 }
 
-pub fn mv_cursor_down(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_down(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
     lm.mv_cursor_down(bm)?;
     Ok(())
 }
 
-pub fn mv_cursor_next_word_head(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_next_word_head(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+) -> Result<(), LayoutError> {
     lm.mv_cursor_next_word_head(bm)?;
     Ok(())
-} 
+}
 
-pub fn mv_cursor_prev_word_head(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_prev_word_head(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+) -> Result<(), LayoutError> {
     lm.mv_cursor_prev_word_head(bm)?;
     Ok(())
-} 
+}
 
-pub fn mv_cursor_head(lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_head(lm: &mut LayoutManager) -> Result<(), LayoutError> {
     lm.mv_cursor_head()?;
     Ok(())
 }
 
-pub fn mv_cursor_tail(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError>{
+pub fn mv_cursor_tail(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), LayoutError> {
     lm.mv_cursor_tail(bm)?;
     Ok(())
 }
@@ -390,7 +414,11 @@ pub fn delete_line(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(),
     Ok(())
 }
 
-pub fn delete_block(bm: &mut BufferManager, lm: &mut LayoutManager, pos: (usize, usize)) -> Result<(), LayoutError> {
+pub fn delete_block(
+    bm: &mut BufferManager,
+    lm: &mut LayoutManager,
+    pos: (usize, usize),
+) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane_mut().ok_or(LayoutError::PaneNotFound)?;
 
     let (cursor_pos, buffer_id) = match pane {
@@ -404,7 +432,7 @@ pub fn delete_block(bm: &mut BufferManager, lm: &mut LayoutManager, pos: (usize,
     buf.apply_op(
         EditOp::DeleteBlock {
             start_pos: pos,
-            end_pos: cursor_pos,  
+            end_pos: cursor_pos,
             text: String::new(),
         },
         true,
@@ -449,7 +477,7 @@ pub fn revoke(bm: &mut BufferManager, lm: &mut LayoutManager) -> Result<(), Layo
     };
 
     let buf = bm.get_buffer_mut(buffer_id)?;
-    buf.revoke();
+    buf.revoke()?;
 
     Ok(())
 }
@@ -480,21 +508,29 @@ pub fn split(
 }
 
 pub fn close_current_pane(
+    cmd: &mut KaoCo,
+    bm: &BufferManager,
     lm: &mut LayoutManager,
-    cur_screen: &mut Screen,
+    quit: &mut bool,
+    screen: &mut Screen,
 ) -> Result<(), LayoutError> {
     let pane = lm.get_current_pane().ok_or(LayoutError::PaneNotFound)?;
 
-    let id = match pane {
-        LayoutNode::Pane { id, .. } => id,
+    let (id, buffer_id) = match pane {
+        LayoutNode::Pane { id, buffer_id, .. } => (id, buffer_id),
         _ => return Err(LayoutError::NotPane),
     };
+    let buf = bm.get_buffer(buffer_id)?;
+    if !buf.saved {
+        cmd.ask_and_quit(screen);
+    } else {
+        lm.remove(id)?;
 
-    lm.remove(id)?;
-
-    if lm.panes.is_none() || lm.current_layout == 0 {
-        *cur_screen = Screen::Welcome;
+        if lm.panes.is_none() || lm.current_layout == 0 {
+            *quit = true;
+        }
     }
+
     Ok(())
 }
 
